@@ -2,8 +2,21 @@
 import { prisma } from "../config/prisma.js";
 import { generarFacturaHospital, reporteConsolidado } from "../services/facturacion.service.js";
 import { registrarActividad } from "../services/actividad.service.js";
+import { leerPaginacion } from "../utils/paginacion.util.js";
 
 export async function listar(req, res) {
+  // Sprint 7: paginado cuando el caller manda "page"; sin el, se mantiene
+  // el comportamiento previo (tope 50) para los selectores simples.
+  if (req.query.page) {
+    const { page, pageSize, skip, take } = leerPaginacion(req);
+    const include = { paciente: { select: { nombreCompleto: true, historiaClinica: true } } };
+    const [items, total] = await Promise.all([
+      prisma.facturaHospital.findMany({ orderBy: { creadoEn: "desc" }, skip, take, include }),
+      prisma.facturaHospital.count(),
+    ]);
+    return res.json({ items, total, page, pageSize });
+  }
+
   const facturas = await prisma.facturaHospital.findMany({
     orderBy: { creadoEn: "desc" },
     take: 50,

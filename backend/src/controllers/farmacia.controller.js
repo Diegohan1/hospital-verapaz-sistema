@@ -2,6 +2,7 @@
 import { prisma } from "../config/prisma.js";
 import { registrarVentaFarmacia } from "../services/facturacion.service.js";
 import { registrarActividad } from "../services/actividad.service.js";
+import { leerPaginacion } from "../utils/paginacion.util.js";
 
 const DIAS_ALERTA_VENCIMIENTO = 60;
 
@@ -147,15 +148,28 @@ export async function registrarVenta(req, res) {
 
 export async function listarVentas(req, res) {
   const { pacienteId } = req.query;
+  const where = pacienteId ? { pacienteId: Number(pacienteId) } : undefined;
+  const include = {
+    items: { include: { medicamento: { select: { nombre: true } } } },
+    paciente: { select: { nombreCompleto: true, historiaClinica: true } },
+    registrador: { select: { nombre: true } },
+  };
+
+  // Sprint 7: paginado cuando el caller manda "page"
+  if (req.query.page) {
+    const { page, pageSize, skip, take } = leerPaginacion(req);
+    const [items, total] = await Promise.all([
+      prisma.facturaFarmacia.findMany({ where, orderBy: { creadoEn: "desc" }, skip, take, include }),
+      prisma.facturaFarmacia.count({ where }),
+    ]);
+    return res.json({ items, total, page, pageSize });
+  }
+
   const facturas = await prisma.facturaFarmacia.findMany({
-    where: pacienteId ? { pacienteId: Number(pacienteId) } : undefined,
+    where,
     orderBy: { creadoEn: "desc" },
     take: 50,
-    include: {
-      items: { include: { medicamento: { select: { nombre: true } } } },
-      paciente: { select: { nombreCompleto: true, historiaClinica: true } },
-      registrador: { select: { nombre: true } },
-    },
+    include,
   });
   res.json(facturas);
 }

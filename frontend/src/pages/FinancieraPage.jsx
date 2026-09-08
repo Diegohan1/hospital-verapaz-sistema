@@ -10,6 +10,8 @@ import { FacturaImprimible } from "../components/FacturaImprimible";
 import { FormField, TextInput, Select } from "../components/FormField";
 import { PacienteBuscador } from "../components/PacienteBuscador";
 import { useFetch } from "../hooks/useFetch";
+import { usePaginatedFetch } from "../hooks/usePaginatedFetch";
+import { Pagination } from "../components/Pagination";
 import { api } from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import { COLORS } from "../styles/tokens";
@@ -20,7 +22,9 @@ export function FinancieraPage() {
   const puedeFacturar = tieneRol(usuario, ROLES.FACTURACION, ROLES.ADMIN);
 
   const { data: reporte, reload: reloadReporte } = useFetch("/facturacion/reporte");
-  const { data: facturas, loading, error, reload: reloadFacturas } = useFetch("/facturacion");
+  // Sprint 7: listado de facturas paginado
+  const facturasPag = usePaginatedFetch("/facturacion", { pageSize: 20 });
+  const { loading, error, reload: reloadFacturas } = facturasPag;
   const [facturaImprimir, setFacturaImprimir] = useState(null);
 
   const [pacienteSeleccionado, setPacienteSeleccionado] = useState(null);
@@ -78,7 +82,7 @@ export function FinancieraPage() {
       {error && <Banner tone="error">{error}</Banner>}
       <Table
         headers={["Paciente", "Costo hospital", "Costo tratamiento", "Total", "Forma de pago", "Fecha", ""]}
-        rows={loading ? [] : facturas || []}
+        rows={loading ? [] : facturasPag.items}
         emptyMessage={loading ? "Cargando…" : "Sin facturas registradas."}
         renderRow={(f) => (
           <>
@@ -96,6 +100,7 @@ export function FinancieraPage() {
           </>
         )}
       />
+      <Pagination page={facturasPag.page} totalPages={facturasPag.totalPages} total={facturasPag.total} onChange={facturasPag.setPage} />
 
       {puedeFacturar && (
         <Card style={{ marginTop: 16 }}>
