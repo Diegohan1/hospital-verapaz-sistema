@@ -7,6 +7,7 @@ import { RecuperarPasswordPage } from "./pages/RecuperarPasswordPage";
 import { CambiarPasswordPage } from "./pages/CambiarPasswordPage";
 import { RegistroPage } from "./pages/RegistroPage";
 import { ExpedientePage } from "./pages/ExpedientePage";
+import { AnexosPage } from "./pages/AnexosPage";
 import { TratamientoPage } from "./pages/TratamientoPage";
 import { ReferidosPage } from "./pages/ReferidosPage";
 import { FinancieraPage } from "./pages/FinancieraPage";
@@ -50,6 +51,7 @@ export default function App() {
         <Route path="/" element={<Navigate to="/registro" replace />} />
         <Route path="/registro" element={<RegistroPage onVerExpediente={irAExpediente} />} />
         <Route path="/expediente" element={<ConPacienteDeUrl Page={ExpedientePage} />} />
+        <Route path="/anexos" element={<ConPacienteDeUrl Page={AnexosPage} />} />
         <Route path="/tratamiento" element={<ConPacienteDeUrl Page={TratamientoPage} />} />
         <Route path="/referidos" element={<ReferidosPage />} />
         <Route path="/financiera" element={<FinancieraPage />} />

@@ -15,7 +15,8 @@
     "prisma:seed": "prisma db seed",
     "postinstall": "prisma generate",
     "backup": "node scripts/backup.js",
-    "migrar-egreso": "node scripts/migrar-egreso-cifrado.js"
+    "migrar-egreso": "node scripts/migrar-egreso-cifrado.js",
+    "recifrar-archivos": "node scripts/recifrar-archivos.js"
   },
   "dependencies": {
     "@prisma/client": "^5.19.0",
