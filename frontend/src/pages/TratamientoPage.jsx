@@ -19,6 +19,7 @@ export function TratamientoPage({ pacienteIdInicial }) {
   const { usuario } = useAuth();
   const puedeRegistrar = tieneRol(usuario, ROLES.ENFERMERIA, ROLES.CONSULTA, ROLES.ADMIN);
   const puedeRecetar = tieneRol(usuario, ROLES.CONSULTA, ROLES.ADMIN);
+  const esClinico = tieneRol(usuario, ROLES.CONSULTA);
 
   const [pacienteId, setPacienteId] = useState(pacienteIdInicial || null);
   // Un solo paciente por id (no una lista completa): con volumen alto de
@@ -28,15 +29,29 @@ export function TratamientoPage({ pacienteIdInicial }) {
   const { data: items, loading, error, reload } = useFetch(pacienteId ? `/tratamientos?pacienteId=${pacienteId}` : null, { enabled: !!pacienteId });
   const { data: recetas, loading: cargandoRecetas, reload: reloadRecetas } = useFetch(pacienteId ? `/recetas?pacienteId=${pacienteId}` : null, { enabled: !!pacienteId });
 
+  // Sprint 5: catalogo de medicos (rol clinico) para elegir al medico
+  // responsable de la receta; el valor inicial es el propio usuario clinico.
+  const { data: medicos } = useFetch(puedeRecetar ? "/usuarios/medicos" : null, { enabled: puedeRecetar });
+
   const [form, setForm] = useState({ descripcion: "", dosis: "", costo: "", origen: "intrahospitalario", cirujano: "", ayudante: "", instrumentista: "", anestesiologo: "" });
   const [esQuirurgico, setEsQuirurgico] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [mensaje, setMensaje] = useState(null);
 
-  const [recetaForm, setRecetaForm] = useState({ medicamento: "", dosis: "", indicaciones: "", duracion: "" });
+  const [recetaForm, setRecetaForm] = useState({ medicamento: "", dosis: "", indicaciones: "", duracion: "", medicoId: "" });
   const [guardandoReceta, setGuardandoReceta] = useState(false);
   const [mensajeReceta, setMensajeReceta] = useState(null);
   const [recetaImprimir, setRecetaImprimir] = useState(null);
+
+  // El medico autenticado es el valor inicial cuando es clinico
+  React.useEffect(() => {
+    if (esClinico && usuario?.id) {
+      setRecetaForm((f) => (f.medicoId ? f : { ...f, medicoId: String(usuario.id) }));
+    }
+  }, [esClinico, usuario?.id]);
+
+  // Autocompletado de colegiado y especialidad al seleccionar el medico
+  const medicoSeleccionado = (medicos || []).find((m) => String(m.id) === String(recetaForm.medicoId));
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -60,9 +75,13 @@ export function TratamientoPage({ pacienteIdInicial }) {
     setGuardandoReceta(true);
     setMensajeReceta(null);
     try {
-      await api.post("/recetas", { ...recetaForm, pacienteId });
+      await api.post("/recetas", {
+        ...recetaForm,
+        pacienteId,
+        medicoId: recetaForm.medicoId ? Number(recetaForm.medicoId) : undefined,
+      });
       setMensajeReceta({ tone: "success", texto: "Receta registrada correctamente." });
-      setRecetaForm({ medicamento: "", dosis: "", indicaciones: "", duracion: "" });
+      setRecetaForm((f) => ({ ...f, medicamento: "", dosis: "", indicaciones: "", duracion: "" }));
       reloadRecetas();
     } catch (err) {
       setMensajeReceta({ tone: "error", texto: err.message });
@@ -157,7 +176,10 @@ export function TratamientoPage({ pacienteIdInicial }) {
               <td className="px-4 py-3 font-semibold">{r.medicamento}</td>
               <td className="px-4 py-3" style={{ color: "#666" }}>{r.dosis}</td>
               <td className="px-4 py-3" style={{ color: "#666" }}>{r.duracion || "—"}</td>
-              <td className="px-4 py-3" style={{ color: "#666" }}>{r.medico?.nombre}</td>
+              <td className="px-4 py-3" style={{ color: "#666" }}>
+                {r.medico?.nombre}
+                {r.medico?.colegiado && <div className="text-xs mt-0.5" style={{ color: "#999" }}>{r.medico.colegiado}{r.medico?.especialidad ? ` · ${r.medico.especialidad}` : ""}</div>}
+              </td>
               <td className="px-4 py-3" style={{ color: "#666" }}>{new Date(r.creadoEn).toLocaleDateString()}</td>
               <td className="px-4 py-3">
                 <button onClick={() => setRecetaImprimir(r)} className="flex items-center gap-1 text-xs font-semibold" style={{ color: COLORS.navy }}>
@@ -171,12 +193,28 @@ export function TratamientoPage({ pacienteIdInicial }) {
         {puedeRecetar && (
           <form onSubmit={handleSubmitReceta} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end mt-4">
             {mensajeReceta && <div className="col-span-1 sm:col-span-2 lg:col-span-4"><Banner tone={mensajeReceta.tone}>{mensajeReceta.texto}</Banner></div>}
+            <FormField label="Médico responsable">
+              <Select required value={recetaForm.medicoId} onChange={(e) => setRecetaForm((f) => ({ ...f, medicoId: e.target.value }))}>
+                <option value="">Seleccionar médico…</option>
+                {(medicos || []).map((m) => (
+                  <option key={m.id} value={m.id}>{m.nombre}</option>
+                ))}
+              </Select>
+              {medicoSeleccionado && (medicoSeleccionado.colegiado || medicoSeleccionado.especialidad) && (
+                <p className="text-xs mt-1" style={{ color: COLORS.gold }}>
+                  {[
+                    medicoSeleccionado.colegiado && `Colegiado: ${medicoSeleccionado.colegiado}`,
+                    medicoSeleccionado.especialidad && `Especialidad: ${medicoSeleccionado.especialidad}`,
+                  ].filter(Boolean).join(" · ")}
+                </p>
+              )}
+            </FormField>
             <FormField label="Medicamento"><TextInput required value={recetaForm.medicamento} onChange={(e) => setRecetaForm((f) => ({ ...f, medicamento: e.target.value }))} /></FormField>
             <FormField label="Dosis"><TextInput required placeholder="ej. 1 tableta cada 8 horas" value={recetaForm.dosis} onChange={(e) => setRecetaForm((f) => ({ ...f, dosis: e.target.value }))} /></FormField>
             <FormField label="Duración"><TextInput placeholder="ej. 7 días" value={recetaForm.duracion} onChange={(e) => setRecetaForm((f) => ({ ...f, duracion: e.target.value }))} /></FormField>
             <FormField label="Indicaciones"><TextInput placeholder="ej. Tomar con alimentos" value={recetaForm.indicaciones} onChange={(e) => setRecetaForm((f) => ({ ...f, indicaciones: e.target.value }))} /></FormField>
             <div className="col-span-1 sm:col-span-2 lg:col-span-4">
-              <Button type="submit" disabled={guardandoReceta}>{guardandoReceta ? "Guardando…" : "Registrar receta"}</Button>
+              <Button type="submit" disabled={guardandoReceta || !recetaForm.medicoId}>{guardandoReceta ? "Guardando…" : "Registrar receta"}</Button>
             </div>
           </form>
         )}

@@ -3,12 +3,31 @@
 // Un usuario puede tener mas de un rol a la vez (ej. Recepcion + Facturacion).
 import bcrypt from "bcrypt";
 import { prisma } from "../config/prisma.js";
-import { ROLES_VALIDOS } from "../utils/roles.util.js";
+import { ROLES, ROLES_VALIDOS } from "../utils/roles.util.js";
 import { registrarActividad } from "../services/actividad.service.js";
 
 const SELECT_PUBLICO = {
-  id: true, nombre: true, correo: true, roles: true, puedeAutogenerarToken: true, ultimaActividad: true, creadoEn: true,
+  id: true, nombre: true, correo: true, roles: true, puedeAutogenerarToken: true,
+  colegiado: true, especialidad: true,
+  ultimaActividad: true, creadoEn: true,
 };
+
+// Sprint 5: catalogo de medicos para el selector de recetas. Devuelve solo
+// datos publicos del medico (nombre, colegiado, especialidad) de usuarios
+// con rol clinico (Consulta). Un usuario sin rol clinico no puede
+// seleccionarse como medico responsable.
+const SELECT_MEDICO = {
+  id: true, nombre: true, colegiado: true, especialidad: true, roles: true,
+};
+
+export async function listarMedicos(req, res) {
+  const medicos = await prisma.usuario.findMany({
+    where: { roles: { has: ROLES.CONSULTA } },
+    select: SELECT_MEDICO,
+    orderBy: { nombre: "asc" },
+  });
+  res.json(medicos);
+}
 
 function validarRoles(roles) {
   if (!Array.isArray(roles) || roles.length === 0) {
@@ -31,7 +50,7 @@ export async function obtenerUno(req, res) {
 }
 
 export async function crear(req, res) {
-  const { nombre, correo, password, roles, puedeAutogenerarToken } = req.body;
+  const { nombre, correo, password, roles, puedeAutogenerarToken, colegiado, especialidad } = req.body;
   if (!nombre || !correo || !password) {
     return res.status(400).json({ error: "nombre, correo y password son requeridos" });
   }
@@ -40,7 +59,13 @@ export async function crear(req, res) {
 
   const passwordHash = await bcrypt.hash(password, 10);
   const usuario = await prisma.usuario.create({
-    data: { nombre, correo, passwordHash, roles, puedeAutogenerarToken: !!puedeAutogenerarToken },
+    data: {
+      nombre, correo, passwordHash, roles,
+      puedeAutogenerarToken: !!puedeAutogenerarToken,
+      // Sprint 5: colegiado y especialidad solo aplican a usuarios clinicos
+      colegiado: roles.includes(ROLES.CONSULTA) ? (colegiado || null) : null,
+      especialidad: roles.includes(ROLES.CONSULTA) ? (especialidad || null) : null,
+    },
     select: SELECT_PUBLICO,
   });
   await registrarActividad(req.user.id, "crear_usuario", `${usuario.nombre} (${usuario.roles.join(", ")})`);
@@ -49,7 +74,7 @@ export async function crear(req, res) {
 
 // RF-32/RF-34: el Administrador reasigna roles y/o el permiso de autogenerar tokens
 export async function actualizar(req, res) {
-  const { nombre, roles, puedeAutogenerarToken } = req.body;
+  const { nombre, roles, puedeAutogenerarToken, colegiado, especialidad } = req.body;
   if (roles !== undefined) {
     const errorRoles = validarRoles(roles);
     if (errorRoles) return res.status(400).json({ error: errorRoles });
@@ -58,9 +83,24 @@ export async function actualizar(req, res) {
   try {
     const usuario = await prisma.usuario.update({
       where: { id: Number(req.params.id) },
-      data: { nombre, roles, puedeAutogenerarToken },
+      data: {
+        nombre, roles, puedeAutogenerarToken,
+        // Sprint 5: si el usuario pierde el rol clinico, colegiado/especialidad
+        // dejan de aplicar y se limpian para no dejar datos inconsistentes
+        ...(colegiado !== undefined ? { colegiado } : {}),
+        ...(especialidad !== undefined ? { especialidad } : {}),
+      },
       select: SELECT_PUBLICO,
     });
+    if (!usuario.roles.includes(ROLES.CONSULTA) && (usuario.colegiado || usuario.especialidad)) {
+      return res.json(
+        await prisma.usuario.update({
+          where: { id: usuario.id },
+          data: { colegiado: null, especialidad: null },
+          select: SELECT_PUBLICO,
+        })
+      );
+    }
     await registrarActividad(req.user.id, "actualizar_usuario", `${usuario.nombre} → roles: ${usuario.roles.join(", ")}, autogenera token: ${usuario.puedeAutogenerarToken}`);
     res.json(usuario);
   } catch (err) {

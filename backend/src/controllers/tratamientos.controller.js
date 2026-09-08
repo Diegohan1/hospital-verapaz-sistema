@@ -30,6 +30,12 @@ export async function crear(req, res) {
   if (!["intrahospitalario", "farmacia"].includes(origen)) {
     return res.status(400).json({ error: 'origen debe ser "intrahospitalario" o "farmacia"' });
   }
+  // Sprint 5: validacion de costo (monetario, no negativo) y paciente
+  if (Number.isNaN(Number(costo)) || Number(costo) < 0) {
+    return res.status(422).json({ error: "El costo debe ser un número mayor o igual a 0" });
+  }
+  const paciente = await prisma.paciente.findUnique({ where: { id: Number(pacienteId) }, select: { id: true } });
+  if (!paciente) return res.status(404).json({ error: "Paciente no encontrado" });
 
   const item = await prisma.tratamientoItem.create({
     data: { pacienteId: Number(pacienteId), descripcion, dosis, costo, origen, cirujano, ayudante, instrumentista, anestesiologo },

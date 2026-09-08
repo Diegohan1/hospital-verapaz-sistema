@@ -127,6 +127,14 @@ export function RecetaImprimible({ receta, patient }) {
           <div className="text-center">
             <div style={{ borderTop: "1px solid #999", paddingTop: 6 }}>
               <div className="text-sm font-semibold">{receta.medico?.nombre}</div>
+              {(receta.medico?.colegiado || receta.medico?.especialidad) && (
+                <div className="text-[10px]" style={{ color: "#666" }}>
+                  {[
+                    receta.medico?.colegiado && `Colegiado No. ${receta.medico.colegiado}`,
+                    receta.medico?.especialidad,
+                  ].filter(Boolean).join(" · ")}
+                </div>
+              )}
               <div className="text-[10px] uppercase tracking-wide" style={{ color: "#888" }}>Firma y sello del médico</div>
             </div>
           </div>
