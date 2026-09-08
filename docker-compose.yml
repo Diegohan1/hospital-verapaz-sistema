@@ -1,0 +1,63 @@
+# Sprint 8: instalacion local del Hospital Verapaz mediante Docker.
+# Copie .env.example a .env, complete los secretos y ejecute:
+#   docker compose up -d --build
+#
+# PostgreSQL NO publica puertos hacia la red externa: solo vive dentro de la
+# red privada de compose. El acceso web entra por el frontend (Nginx), que
+# hace proxy de /api hacia el backend.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: verapaz
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Configure POSTGRES_PASSWORD en .env}
+      POSTGRES_DB: hospital_verapaz
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U verapaz -d hospital_verapaz"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql://verapaz:${POSTGRES_PASSWORD}@db:5432/hospital_verapaz
+      JWT_SECRET: ${JWT_SECRET:?Configure JWT_SECRET en .env}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?Configure ENCRYPTION_KEY en .env}
+      TEMP_TOKEN_EXPIRES_MIN: ${TEMP_TOKEN_EXPIRES_MIN:-15}
+      PASSWORD_RESET_EXPIRES_MIN: ${PASSWORD_RESET_EXPIRES_MIN:-30}
+      PASSWORD_RESET_EXPOSE_TOKEN: ${PASSWORD_RESET_EXPOSE_TOKEN:-false}
+      NOTIFICACION_PROVEEDOR: ${NOTIFICACION_PROVEEDOR:-consola}
+      APP_URL: ${APP_URL:-http://localhost:8080}
+      UPLOAD_MAX_MB_ESTUDIOS: ${UPLOAD_MAX_MB_ESTUDIOS:-5}
+      UPLOAD_MAX_MB_ANEXOS: ${UPLOAD_MAX_MB_ANEXOS:-15}
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@hospitalverapaz.gt}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-CambiarEsta123}
+      # Migraciones y seed controlados en el primer arranque (idempotentes).
+      # Despues de la instalacion puede dejarlos en false.
+      RUN_MIGRATIONS: ${RUN_MIGRATIONS:-true}
+      RUN_SEED: ${RUN_SEED:-true}
+    volumes:
+      - uploads:/app/uploads
+      - backups:/app/backups
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  uploads:
+  backups:
