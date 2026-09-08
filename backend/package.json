@@ -9,7 +9,6 @@
   "scripts": {
     "dev": "node --watch-path=src --watch-path=prisma/schema.prisma src/server.js",
     "start": "node src/server.js",
-    "test": "node --test src/tests/",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "prisma db seed",

@@ -71,24 +71,51 @@ function validarPaciente(body) {
   return null;
 }
 
+// Mapeo de los campos legacy (texto plano en columnas administrativas) al
+// payload cifrado nuevo, para compatibilidad con clientes que aun los envian.
+const MAPA_LEGACY_EGRESO = {
+  diagnosticoEgresoCodigo: "diagnosticoEgreso",
+  complicacionesCodigo: "complicaciones",
+  operacionesCodigo: "operaciones",
+};
+
 // Arma el payload clinico de egreso a partir de body.egresoClinico (forma
 // nueva) o de los campos planos legacy (compatibilidad con clientes viejos);
 // devuelve null si no hay nada que guardar.
-function tomarEgresoClinico(body) {
-  const fuente = body.egresoClinico ?? body;
-  if (body.egresoClinico === null) return null; // borrado explicito del egreso clinico
+export function tomarEgresoClinico(body) {
+  // borrado explicito del egreso clinico
+  if (body.egresoClinico === null) return null;
+
+  // forma nueva: objeto egresoClinico con los nombres definitivos
+  if (body.egresoClinico !== undefined) {
+    const payload = {};
+    let tieneDatos = false;
+    for (const campo of CAMPOS_EGRESO_CLINICO) {
+      if (body.egresoClinico[campo] === undefined) continue;
+      payload[campo] = body.egresoClinico[campo] === "" ? null : body.egresoClinico[campo];
+      tieneDatos = true;
+    }
+    return tieneDatos ? payload : {};
+  }
+
+  // forma legacy: campos planos (con sufijo *Codigo para los CIE)
   const payload = {};
   let tieneDatos = false;
-  for (const campo of CAMPOS_EGRESO_CLINICO) {
-    if (fuente[campo] === undefined) continue;
-    payload[campo] = fuente[campo] === "" ? null : fuente[campo];
+  for (const [campoLegacy, campoNuevo] of Object.entries(MAPA_LEGACY_EGRESO)) {
+    if (body[campoLegacy] === undefined) continue;
+    payload[campoNuevo] = body[campoLegacy] === "" ? null : body[campoLegacy];
     tieneDatos = true;
   }
-  return tieneDatos ? payload : (body.egresoClinico ? {} : null);
+  for (const campo of ["autopsia", "causaMuerte"]) {
+    if (body[campo] === undefined) continue;
+    payload[campo] = body[campo] === "" ? null : body[campo];
+    tieneDatos = true;
+  }
+  return tieneDatos ? payload : null;
 }
 
 // Autopsia y causa de muerte solo aplican a condiciones de fallecimiento
-function validarEgresoClinico(payload, condicionEfectiva) {
+export function validarEgresoClinico(payload, condicionEfectiva) {
   if (!payload) return null;
   const marcaFallecimiento = (payload.autopsia != null && payload.autopsia !== "") || payload.causaMuerte;
   if (marcaFallecimiento && !CONDICIONES_FALLECIMIENTO.includes(condicionEfectiva)) {
