@@ -9,11 +9,13 @@
   "scripts": {
     "dev": "node --watch-path=src --watch-path=prisma/schema.prisma src/server.js",
     "start": "node src/server.js",
+    "test": "node --test src/tests/",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "prisma db seed",
     "postinstall": "prisma generate",
-    "backup": "node scripts/backup.js"
+    "backup": "node scripts/backup.js",
+    "migrar-egreso": "node scripts/migrar-egreso-cifrado.js"
   },
   "dependencies": {
     "@prisma/client": "^5.19.0",

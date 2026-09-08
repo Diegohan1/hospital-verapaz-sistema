@@ -1,4 +1,5 @@
 import "dotenv/config";
+import "./config/env.js"; // valida variables criticas al arranque (falla rapido)
 import "express-async-errors"; // permite que los errores en controladores async lleguen al errorHandler
 import express from "express";
 import cors from "cors";
@@ -42,6 +43,9 @@ app.get("/api/health", (req, res) => res.json({ status: "ok" }));
 app.use((err, req, res, next) => {
   if (err.code === "P2002") {
     return res.status(409).json({ error: "Ya existe un registro con ese valor único" });
+  }
+  if (err.code === "LIMIT_FILE_SIZE") {
+    return res.status(422).json({ error: "El archivo excede el tamaño máximo permitido" });
   }
   console.error(err);
   res.status(err.status || 500).json({ error: err.message || "Error interno del servidor" });
