@@ -5,6 +5,8 @@ import crypto from "crypto";
 import { prisma } from "../config/prisma.js";
 import { ROLES } from "../utils/roles.util.js";
 import { registrarActividad } from "../services/actividad.service.js";
+import { enviarEnlaceRecuperacion, construirEnlaceReset } from "../services/notificacion.service.js";
+import { PASSWORD_RESET_EXPIRES_MIN, PASSWORD_RESET_EXPOSE_TOKEN } from "../config/env.js";
 
 function firmarSesion(usuario) {
   return jwt.sign(
@@ -48,6 +50,67 @@ export async function login(req, res) {
 export async function logout(req, res) {
   await registrarActividad(req.user.id, "logout", "Cierre de sesión");
   res.json({ ok: true });
+}
+
+// Sprint 2: solicitud de recuperacion de contrasena. Respuesta
+// anti-enumeracion: siempre devuelve el mismo mensaje y codigo, exista o no
+// el correo, para no revelar que cuentas tienen acceso al sistema.
+// Se guarda solo el hash SHA-256 del token; el token en claro viaja unicamente
+// por el canal de notificacion (o, en laboratorio, en la respuesta).
+export async function forgotPassword(req, res) {
+  const { correo } = req.body;
+  const respuestaGenerica = { ok: true, mensaje: "Si el correo corresponde a una cuenta, se envió un enlace de recuperación. El enlace expira en 30 minutos." };
+
+  if (!correo) return res.status(400).json({ error: "correo es requerido" });
+
+  const usuario = await prisma.usuario.findUnique({ where: { correo } });
+  if (!usuario) return res.json(respuestaGenerica);
+
+  const token = crypto.randomBytes(32).toString("hex");
+  const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+  const expiraEn = new Date(Date.now() + PASSWORD_RESET_EXPIRES_MIN * 60 * 1000);
+
+  await prisma.passwordResetToken.create({ data: { usuarioId: usuario.id, tokenHash, expiraEn } });
+  await registrarActividad(usuario.id, "solicitar_reset_password", `Enlace de recuperación solicitado para ${usuario.correo}`);
+
+  const enlace = construirEnlaceReset(token);
+  const entrega = await enviarEnlaceRecuperacion({ correo: usuario.correo, nombre: usuario.nombre, enlace });
+
+  // Solo en laboratorio (PASSWORD_RESET_EXPOSE_TOKEN=true): devolver el token
+  // para poder probar el flujo sin proveedor de correo. En produccion debe
+  // ser false y el token llega unicamente por el canal contratado.
+  if (PASSWORD_RESET_EXPOSE_TOKEN) {
+    return res.json({ ...respuestaGenerica, token, modoEntrega: entrega.modo });
+  }
+  res.json(respuestaGenerica);
+}
+
+// Sprint 2: cambio de contrasena con el token de recuperacion. El token se
+// busca por hash, debe estar vigente y no usado; se consume en la misma
+// transaccion que cambia la contrasena para que no pueda reutilizarse.
+export async function resetPassword(req, res) {
+  const { token, password } = req.body;
+  if (!token || !password) {
+    return res.status(400).json({ error: "token y password son requeridos" });
+  }
+  if (password.length < 8) {
+    return res.status(400).json({ error: "La contraseña debe tener al menos 8 caracteres" });
+  }
+
+  const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+  const registro = await prisma.passwordResetToken.findUnique({ where: { tokenHash } });
+  if (!registro) return res.status(400).json({ error: "Token inválido o no entregado" });
+  if (registro.usado) return res.status(400).json({ error: "El token ya fue utilizado" });
+  if (registro.expiraEn < new Date()) return res.status(400).json({ error: "El token ha expirado" });
+
+  const passwordHash = await bcrypt.hash(password, 10);
+  await prisma.$transaction([
+    prisma.usuario.update({ where: { id: registro.usuarioId }, data: { passwordHash } }),
+    prisma.passwordResetToken.update({ where: { id: registro.id }, data: { usado: true } }),
+  ]);
+
+  await registrarActividad(registro.usuarioId, "reset_password", "Contraseña restablecida con token de recuperación");
+  res.json({ ok: true, mensaje: "Contraseña actualizada. Ya puede iniciar sesión." });
 }
 
 async function emitirToken({ usuarioId, pacienteId, emitidoPor }) {
