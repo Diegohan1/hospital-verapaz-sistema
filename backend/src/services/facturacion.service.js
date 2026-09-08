@@ -1,7 +1,13 @@
 // Logica de negocio de facturacion, con transacciones que garantizan que
 // costeo + factura se registren como una sola operacion atomica (RNF-13):
 // si un paso falla, Prisma revierte todo lo hecho dentro del $transaction.
+// Sprint 6: los totales monetarios se redondean a 2 decimales antes de
+// persistirse, para evitar arrastres de coma flotante en los reportes.
 import { prisma } from "../config/prisma.js";
+
+function round2(valor) {
+  return Number(valor.toFixed(2));
+}
 
 // RF-17/RF-18/RF-19: calcula el costo de tratamiento pendiente del paciente,
 // lo suma al costo base del hospital y genera la factura en una sola transaccion.
@@ -23,10 +29,10 @@ export async function generarFacturaHospital({ pacienteId, costoHospital, formaP
       where: { pacienteId, facturado: false },
     });
     const costoTratamiento = pendientes.reduce((suma, item) => suma + Number(item.costo), 0);
-    const total = Number(costoHospital) + costoTratamiento;
+    const total = round2(Number(costoHospital) + costoTratamiento);
 
     const factura = await tx.facturaHospital.create({
-      data: { pacienteId, costoHospital, costoTratamiento, total, formaPago },
+      data: { pacienteId, costoHospital, costoTratamiento: round2(costoTratamiento), total, formaPago },
     });
 
     if (pendientes.length > 0) {
@@ -62,13 +68,13 @@ export async function registrarVentaFarmacia({ pacienteId, items, registradoPor 
         throw error;
       }
       const precioUnitario = Number(medicamento.precioVenta);
-      const subtotal = precioUnitario * item.cantidad;
+      const subtotal = round2(precioUnitario * item.cantidad);
       montoTotal += subtotal;
       lineas.push({ medicamentoId: item.medicamentoId, cantidad: item.cantidad, precioUnitario, subtotal });
     }
 
     const factura = await tx.facturaFarmacia.create({
-      data: { pacienteId: pacienteId ?? null, montoTotal, registradoPor },
+      data: { pacienteId: pacienteId ?? null, montoTotal: round2(montoTotal), registradoPor },
     });
 
     for (const linea of lineas) {

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Lock, Mail } from "lucide-react";
+import { Link } from "react-router-dom";
 import { Banner } from "../components/Banner";
 import { COLORS } from "../styles/tokens";
 import { useAuth } from "../context/AuthContext";
@@ -122,8 +123,10 @@ export function LoginPage() {
               />
               <span className="relative">{cargando ? "Ingresando…" : "Ingresar"}</span>
             </button>
-            <p className="text-center text-xs" style={{ color: COLORS.gold }}>
-              ¿Olvidó su contraseña? Contacte al Administrador
+            <p className="text-center text-xs mt-1">
+              <Link to="/recuperar" className="font-semibold" style={{ color: COLORS.gold }}>
+                ¿Olvidó su contraseña? Recuperarla
+              </Link>
             </p>
           </form>
         </div>

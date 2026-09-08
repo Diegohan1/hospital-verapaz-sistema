@@ -60,6 +60,7 @@ const CAMPOS_VACIOS = {
   telefono: "", edad: "", sexo: "", tipoSangre: "", estadoCivil: "", ocupacion: "", religion: "",
   nacionalidad: "", nombreConyuge: "", nombrePadre: "", nombreMadre: "",
   contactoEmergencia: "", telefonoEmergencia: "", parentesco: "",
+  encargadoNombre: "", encargadoTelefono: "",
   referidoDe: "", medicoReferenteId: "",
 };
 
@@ -96,6 +97,9 @@ export function RegistroPage({ onVerExpediente }) {
 
   useEffect(() => {
     if (!pacienteDetalle) return;
+    // Sprint 3: el egreso clinico llega cifrado desde el backend como objeto
+    // egresoClinico; los campos planos legacy son solo fallback de datos viejos.
+    const eg = pacienteDetalle.egresoClinico || {};
     setIngresoForm({
       tipoSangre: pacienteDetalle.tipoSangre || "",
       fechaIngreso: toDatetimeLocal(pacienteDetalle.fechaIngreso),
@@ -104,12 +108,12 @@ export function RegistroPage({ onVerExpediente }) {
       medicoReferenteId: pacienteDetalle.medicoReferenteId || "",
       impresionClinicaIngreso: pacienteDetalle.impresionClinicaIngreso || "",
       fechaEgreso: toDatetimeLocal(pacienteDetalle.fechaEgreso),
-      diagnosticoEgresoCodigo: pacienteDetalle.diagnosticoEgresoCodigo || "",
-      complicacionesCodigo: pacienteDetalle.complicacionesCodigo || "",
-      operacionesCodigo: pacienteDetalle.operacionesCodigo || "",
+      diagnosticoEgresoCodigo: eg.diagnosticoEgreso ?? pacienteDetalle.diagnosticoEgresoCodigo ?? "",
+      complicacionesCodigo: eg.complicaciones ?? pacienteDetalle.complicacionesCodigo ?? "",
+      operacionesCodigo: eg.operaciones ?? pacienteDetalle.operacionesCodigo ?? "",
       condicionEgreso: pacienteDetalle.condicionEgreso || "",
-      autopsia: pacienteDetalle.autopsia == null ? "" : pacienteDetalle.autopsia ? "si" : "no",
-      causaMuerte: pacienteDetalle.causaMuerte || "",
+      autopsia: eg.autopsia == null ? (pacienteDetalle.autopsia == null ? "" : pacienteDetalle.autopsia ? "si" : "no") : eg.autopsia ? "si" : "no",
+      causaMuerte: eg.causaMuerte ?? pacienteDetalle.causaMuerte ?? "",
       matNumeroHijo: pacienteDetalle.maternidad?.numeroHijo ?? "",
       matFecha: toDateInput(pacienteDetalle.maternidad?.fecha),
       matHora: pacienteDetalle.maternidad?.hora || "",
@@ -148,12 +152,16 @@ export function RegistroPage({ onVerExpediente }) {
       medicoReferenteId: f.medicoReferenteId ? Number(f.medicoReferenteId) : null,
       impresionClinicaIngreso: f.impresionClinicaIngreso || null,
       fechaEgreso: f.fechaEgreso ? new Date(f.fechaEgreso).toISOString() : null,
-      diagnosticoEgresoCodigo: f.diagnosticoEgresoCodigo || null,
-      complicacionesCodigo: f.complicacionesCodigo || null,
-      operacionesCodigo: f.operacionesCodigo || null,
       condicionEgreso: f.condicionEgreso || null,
-      autopsia: f.autopsia === "" ? null : f.autopsia === "si",
-      causaMuerte: f.causaMuerte || null,
+      // Sprint 3: datos clinicos de egreso viajan como objeto; el backend los
+      // cifra (AES-256-GCM) antes de guardarlos en EgresoClinico.
+      egresoClinico: {
+        diagnosticoEgreso: f.diagnosticoEgresoCodigo || null,
+        complicaciones: f.complicacionesCodigo || null,
+        operaciones: f.operacionesCodigo || null,
+        autopsia: f.autopsia === "" ? null : f.autopsia === "si",
+        causaMuerte: f.causaMuerte || null,
+      },
     };
     if (f.matNumeroHijo || f.matFecha || f.matHora || f.matSexo || f.matCondicion) {
       payload.maternidad = {
@@ -424,6 +432,20 @@ export function RegistroPage({ onVerExpediente }) {
                   {PARENTESCOS.map((p) => <option key={p} value={p}>{p}</option>)}
                   <option value={OTRO}>Otro…</option>
                 </Select>
+              )}
+            </FormField>
+            <FormField label="Encargado / responsable legal (nombre)">
+              <TextInput placeholder="Puede ser distinto del contacto de emergencia" value={form.encargadoNombre} onChange={(e) => setCampo("encargadoNombre", e.target.value)} />
+            </FormField>
+            <FormField label="Teléfono del encargado">
+              <TextInput
+                value={formatearTelefono(form.encargadoTelefono)}
+                onChange={(e) => setCampo("encargadoTelefono", limpiarTelefono(e.target.value))}
+                placeholder="0000 0000"
+                inputMode="numeric"
+              />
+              {telefonoIncompleto(form.encargadoTelefono) && (
+                <p className="text-xs mt-1" style={{ color: "#B08B2E" }}>El teléfono debe tener 8 dígitos.</p>
               )}
             </FormField>
             <div className="col-span-1 sm:col-span-2 lg:col-span-3">

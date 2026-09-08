@@ -14,5 +14,6 @@ router.get("/admisiones", controller.admisiones);
 router.get("/facturacion-por-forma-pago", controller.facturacionPorFormaPago);
 router.get("/inventario-kardex", controller.inventarioKardex); // RNF-10
 router.get("/auditoria-diagnostico", controller.auditoriaDiagnostico); // RNF-08
+router.get("/actividad", controller.actividad); // Sprint 7: bitacora general administrativa
 
 export default router;

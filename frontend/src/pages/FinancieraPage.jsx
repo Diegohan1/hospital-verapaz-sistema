@@ -10,6 +10,8 @@ import { FacturaImprimible } from "../components/FacturaImprimible";
 import { FormField, TextInput, Select } from "../components/FormField";
 import { PacienteBuscador } from "../components/PacienteBuscador";
 import { useFetch } from "../hooks/useFetch";
+import { usePaginatedFetch } from "../hooks/usePaginatedFetch";
+import { Pagination } from "../components/Pagination";
 import { api } from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import { COLORS } from "../styles/tokens";
@@ -20,11 +22,20 @@ export function FinancieraPage() {
   const puedeFacturar = tieneRol(usuario, ROLES.FACTURACION, ROLES.ADMIN);
 
   const { data: reporte, reload: reloadReporte } = useFetch("/facturacion/reporte");
-  const { data: facturas, loading, error, reload: reloadFacturas } = useFetch("/facturacion");
+  // Sprint 7: listado de facturas paginado
+  const facturasPag = usePaginatedFetch("/facturacion", { pageSize: 20 });
+  const { loading, error, reload: reloadFacturas } = facturasPag;
   const [facturaImprimir, setFacturaImprimir] = useState(null);
 
   const [pacienteSeleccionado, setPacienteSeleccionado] = useState(null);
   const pacienteId = pacienteSeleccionado?.id;
+
+  // Sprint 6: vista previa del costeo pendiente (tratamientos no facturados
+  // agrupados por origen) antes de generar la factura.
+  const { data: costeo, reload: reloadCosteo } = useFetch(
+    pacienteId && puedeFacturar ? `/facturacion/costeo/${pacienteId}` : null,
+    { enabled: !!(pacienteId && puedeFacturar) }
+  );
 
   const [form, setForm] = useState({ costoHospital: "", formaPago: "efectivo" });
   const [guardando, setGuardando] = useState(false);
@@ -40,6 +51,7 @@ export function FinancieraPage() {
       setForm({ costoHospital: "", formaPago: "efectivo" });
       reloadFacturas();
       reloadReporte();
+      reloadCosteo();
     } catch (err) {
       setMensaje({ tone: "error", texto: err.message });
     } finally {
@@ -70,7 +82,7 @@ export function FinancieraPage() {
       {error && <Banner tone="error">{error}</Banner>}
       <Table
         headers={["Paciente", "Costo hospital", "Costo tratamiento", "Total", "Forma de pago", "Fecha", ""]}
-        rows={loading ? [] : facturas || []}
+        rows={loading ? [] : facturasPag.items}
         emptyMessage={loading ? "Cargando…" : "Sin facturas registradas."}
         renderRow={(f) => (
           <>
@@ -88,6 +100,7 @@ export function FinancieraPage() {
           </>
         )}
       />
+      <Pagination page={facturasPag.page} totalPages={facturasPag.totalPages} total={facturasPag.total} onChange={facturasPag.setPage} />
 
       {puedeFacturar && (
         <Card style={{ marginTop: 16 }}>
@@ -101,6 +114,37 @@ export function FinancieraPage() {
               <PacienteBuscador pacienteSeleccionado={pacienteSeleccionado} onSelect={setPacienteSeleccionado} mostrarListado />
             </FormField>
           </div>
+
+          {pacienteId && costeo && (
+            <div className="rounded-xl p-4 mb-4" style={{ backgroundColor: "#FAFAFB", border: `1px solid ${COLORS.border}` }}>
+              <div className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.navy }}>
+                Costeo pendiente del paciente (se sumará automáticamente a la factura)
+              </div>
+              {costeo.items.length === 0 ? (
+                <p className="text-sm" style={{ color: "#888" }}>Sin tratamientos pendientes de facturar.</p>
+              ) : (
+                <>
+                  <ul className="text-sm flex flex-col gap-1 mb-2" style={{ color: "#444" }}>
+                    {costeo.items.map((i) => (
+                      <li key={i.id} className="flex justify-between gap-3">
+                        <span>
+                          {i.descripcion}
+                          <span className="text-xs ml-2" style={{ color: "#999" }}>
+                            {i.origen === "farmacia" ? "Farmacia" : "Intrahospitalario"}
+                            {i.dosis ? ` · ${i.dosis}` : ""}
+                          </span>
+                        </span>
+                        <span className="font-semibold">Q{Number(i.costo).toFixed(2)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="text-sm font-bold pt-2" style={{ borderTop: `1px solid ${COLORS.border}`, color: COLORS.navy }}>
+                    Total tratamiento pendiente: Q{costeo.costoTratamientoPendiente.toFixed(2)}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
           <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
             <FormField label="Costo base hospital (Q)"><TextInput type="number" step="0.01" min="0" required value={form.costoHospital} onChange={(e) => setForm((f) => ({ ...f, costoHospital: e.target.value }))} /></FormField>
             <FormField label="Forma de pago">

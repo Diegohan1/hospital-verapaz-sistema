@@ -65,16 +65,31 @@ export function ReportesPage() {
   const [mostrarAuditoria, setMostrarAuditoria] = useState(false);
   const [buscarInput, setBuscarInput] = useState("");
   const [buscarAuditoria, setBuscarAuditoria] = useState("");
+  const [mostrarBitacora, setMostrarBitacora] = useState(false);
+  const [buscarBitacoraInput, setBuscarBitacoraInput] = useState("");
+  const [buscarBitacora, setBuscarBitacora] = useState("");
+  const [accionBitacora, setAccionBitacora] = useState("");
 
   useEffect(() => {
     const timeout = setTimeout(() => setBuscarAuditoria(buscarInput), 300);
     return () => clearTimeout(timeout);
   }, [buscarInput]);
 
+  useEffect(() => {
+    const timeout = setTimeout(() => setBuscarBitacora(buscarBitacoraInput), 300);
+    return () => clearTimeout(timeout);
+  }, [buscarBitacoraInput]);
+
   const auditoriaPag = usePaginatedFetch(
     conRango(`/reportes/auditoria-diagnostico${buscarAuditoria ? `?buscar=${encodeURIComponent(buscarAuditoria)}` : ""}`),
     { pageSize: 20, enabled: mostrarAuditoria }
   );
+
+  // Sprint 7: bitacora general de actividad (login/logout, creaciones,
+  // actualizaciones y acciones financieras), separada de la auditoria del
+  // diagnostico confidencial.
+  const bitacoraPath = `/reportes/actividad${accionBitacora || buscarBitacora ? "?" : ""}${accionBitacora ? `accion=${accionBitacora}` : ""}${accionBitacora && buscarBitacora ? "&" : ""}${buscarBitacora ? `buscar=${encodeURIComponent(buscarBitacora)}` : ""}`;
+  const bitacoraPag = usePaginatedFetch(conRango(bitacoraPath), { pageSize: 20, enabled: mostrarBitacora });
 
   return (
     <div>
@@ -242,6 +257,65 @@ export function ReportesPage() {
               )}
             />
             <Pagination page={auditoriaPag.page} totalPages={auditoriaPag.totalPages} total={auditoriaPag.total} onChange={auditoriaPag.setPage} />
+          </div>
+        )}
+      </Card>
+
+      <Card style={{ marginTop: 16 }}>
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div>
+            <div className="font-semibold text-sm mb-1">Bitácora general de actividad</div>
+            <p className="text-xs" style={{ color: "#888" }}>
+              Quién hizo qué y cuándo: inicios de sesión, creaciones, actualizaciones y acciones financieras de todos los módulos.
+              El rango de fechas de arriba aplica también a esta tabla.
+            </p>
+          </div>
+          <Button variant="secondary" onClick={() => setMostrarBitacora((v) => !v)}>
+            <span className="flex items-center gap-1.5">
+              {mostrarBitacora ? <EyeOff size={15} /> : <Eye size={15} />}
+              {mostrarBitacora ? "Ocultar bitácora" : "Ver bitácora"}
+            </span>
+          </Button>
+        </div>
+
+        {mostrarBitacora && (
+          <div className="mt-4 animate-fade-in flex flex-wrap gap-3 items-end">
+            <TextInput
+              placeholder="Buscar por usuario o detalle…"
+              value={buscarBitacoraInput}
+              onChange={(e) => setBuscarBitacoraInput(e.target.value)}
+              style={{ maxWidth: 300 }}
+            />
+            <FormField label="Acción">
+              <select
+                value={accionBitacora}
+                onChange={(e) => setAccionBitacora(e.target.value)}
+                className="text-sm rounded-xl border px-3 py-2.5"
+                style={{ borderColor: COLORS.border }}
+              >
+                <option value="">Todas</option>
+                {["login", "logout", "crear_paciente", "actualizar_paciente", "crear_usuario", "actualizar_usuario",
+                  "crear_receta", "registrar_tratamiento", "generar_factura_hospital", "venta_farmacia",
+                  "entrada_inventario", "salida_uso_intrahospitalario", "registrar_visita", "ver_anexos",
+                  "subir_anexos", "descargar_anexo", "solicitar_reset_password", "reset_password"].map((a) => (
+                  <option key={a} value={a}>{a}</option>
+                ))}
+              </select>
+            </FormField>
+            <Table
+              headers={["Usuario", "Acción", "Detalle", "Fecha"]}
+              rows={bitacoraPag.loading ? [] : bitacoraPag.items}
+              emptyMessage={bitacoraPag.loading ? "Cargando…" : "Sin actividad registrada."}
+              renderRow={(l) => (
+                <>
+                  <td className="px-4 py-3 font-semibold">{l.usuario?.nombre || "—"}</td>
+                  <td className="px-4 py-3"><span className="text-xs font-semibold px-2 py-1 rounded-full" style={{ backgroundColor: "#E6F4EC", color: COLORS.navy }}>{l.accion}</span></td>
+                  <td className="px-4 py-3" style={{ color: "#666" }}>{l.detalle || "—"}</td>
+                  <td className="px-4 py-3" style={{ color: "#666" }}>{new Date(l.fecha).toLocaleString()}</td>
+                </>
+              )}
+            />
+            <Pagination page={bitacoraPag.page} totalPages={bitacoraPag.totalPages} total={bitacoraPag.total} onChange={bitacoraPag.setPage} />
           </div>
         )}
       </Card>

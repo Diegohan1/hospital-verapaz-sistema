@@ -30,7 +30,15 @@ function fechaHora(v) { return v ? new Date(v).toLocaleString() : null; }
 // formato de la hoja fisica que usa el hospital.
 export function FichaPacienteImprimible({ paciente }) {
   const p = paciente;
-  const tieneEgreso = p.fechaEgreso || p.condicionEgreso || p.diagnosticoEgresoCodigo || p.complicacionesCodigo || p.operacionesCodigo || p.causaMuerte;
+  // Sprint 3: el egreso clinico llega cifrado como objeto egresoClinico; los
+  // campos planos legacy son fallback de datos registrados antes del cifrado.
+  const eg = p.egresoClinico || {};
+  const diagnosticoEgreso = eg.diagnosticoEgreso ?? p.diagnosticoEgresoCodigo;
+  const complicaciones = eg.complicaciones ?? p.complicacionesCodigo;
+  const operaciones = eg.operaciones ?? p.operacionesCodigo;
+  const autopsia = eg.autopsia ?? p.autopsia;
+  const causaMuerte = eg.causaMuerte ?? p.causaMuerte;
+  const tieneEgreso = p.fechaEgreso || p.condicionEgreso || diagnosticoEgreso || complicaciones || operaciones || causaMuerte;
   const tieneMaternidad = p.maternidad && (p.maternidad.numeroHijo || p.maternidad.fecha || p.maternidad.sexo || p.maternidad.condicionEgresoBebe);
 
   return (
@@ -98,6 +106,16 @@ export function FichaPacienteImprimible({ paciente }) {
           </div>
         </div>
 
+        {(p.encargadoNombre || p.encargadoTelefono) && (
+          <div className="rounded-lg overflow-hidden mb-4" style={{ border: "1px solid #ccc" }}>
+            <Barra>Encargado / responsable legal</Barra>
+            <div className="grid grid-cols-2 gap-3 p-3">
+              <Campo label="Nombre" valor={p.encargadoNombre} />
+              <Campo label="Teléfono" valor={p.encargadoTelefono} />
+            </div>
+          </div>
+        )}
+
         <div className="rounded-lg overflow-hidden mb-4" style={{ border: "1px solid #ccc" }}>
           <Barra>Ingreso</Barra>
           <div className="grid grid-cols-2 gap-3 p-3">
@@ -113,11 +131,11 @@ export function FichaPacienteImprimible({ paciente }) {
             <div className="grid grid-cols-2 gap-3 p-3">
               <Campo label="Fecha de egreso" valor={fechaHora(p.fechaEgreso)} />
               <Campo label="Condición de egreso" valor={p.condicionEgreso ? etiquetaCondicionEgreso(p.condicionEgreso) : null} />
-              <Campo label="Diagnóstico de egreso (CIE-10)" valor={p.diagnosticoEgresoCodigo} />
-              <Campo label="Complicaciones (CIE-10)" valor={p.complicacionesCodigo} />
-              <Campo label="Operaciones" valor={p.operacionesCodigo} />
-              <Campo label="Autopsia" valor={p.autopsia == null ? null : p.autopsia ? "Sí" : "No"} />
-              {p.causaMuerte && <div className="col-span-2"><Campo label="Causa de la muerte" valor={p.causaMuerte} /></div>}
+              <Campo label="Diagnóstico de egreso (CIE-10)" valor={diagnosticoEgreso} />
+              <Campo label="Complicaciones (CIE-10)" valor={complicaciones} />
+              <Campo label="Operaciones" valor={operaciones} />
+              <Campo label="Autopsia" valor={autopsia == null ? null : autopsia ? "Sí" : "No"} />
+              {causaMuerte && <div className="col-span-2"><Campo label="Causa de la muerte" valor={causaMuerte} /></div>}
             </div>
           </div>
         )}
