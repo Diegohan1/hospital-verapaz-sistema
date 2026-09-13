@@ -12,10 +12,10 @@ WORKDIR /app
 
 # Dependencias primero (capa cacheable); postinstall ejecuta prisma generate
 COPY package.json package-lock.json ./
+COPY prisma ./prisma
 RUN npm ci --no-audit --no-fund
 
 # Codigo de la aplicacion
-COPY prisma ./prisma
 COPY src ./src
 COPY scripts ./scripts
 
