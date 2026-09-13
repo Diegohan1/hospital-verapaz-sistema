@@ -48,7 +48,7 @@ function SidebarContent({ usuario, onLogout, onNavigate }) {
           </div>
           <div className="min-w-0">
             <div className="text-sm font-semibold text-white truncate">{usuario.nombre}</div>
-            <div className="text-xs truncate" style={{ color: "#A9C9B4" }}>{etiquetasRoles(usuario.roles)}</div>
+            <div className="text-xs truncate" style={{ color: "#A5D8BD" }}>{etiquetasRoles(usuario.roles)}</div>
           </div>
         </div>
       </div>
@@ -64,7 +64,7 @@ function SidebarContent({ usuario, onLogout, onNavigate }) {
               style={
                 activo
                   ? { backgroundColor: COLORS.gold, color: COLORS.navy, fontWeight: 600 }
-                  : { color: "#DCEAE0", backgroundColor: "transparent" }
+                  : { color: "#D8F0E2", backgroundColor: "transparent" }
               }
               onMouseEnter={(e) => { if (!activo) e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.06)"; }}
               onMouseLeave={(e) => { if (!activo) e.currentTarget.style.backgroundColor = "transparent"; }}
@@ -79,7 +79,7 @@ function SidebarContent({ usuario, onLogout, onNavigate }) {
         <button
           onClick={onLogout}
           className="w-full flex items-center gap-3 text-left px-3 py-2.5 rounded-xl text-sm transition-colors duration-150 hover:bg-white/5"
-          style={{ color: "#A9C9B4" }}
+          style={{ color: "#A5D8BD" }}
         >
           <LogOut size={17} className="shrink-0" />
           Cerrar sesión

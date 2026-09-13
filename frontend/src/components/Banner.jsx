@@ -3,7 +3,7 @@ import { CheckCircle2, Info, AlertTriangle } from "lucide-react";
 import { COLORS } from "../styles/tokens";
 
 const TONES = {
-  success: { bg: "#EAF7EF", color: COLORS.green, Icon: CheckCircle2 },
+  success: { bg: "#E5F6EE", color: COLORS.green, Icon: CheckCircle2 },
   error: { bg: "#FCECEA", color: COLORS.red, Icon: AlertTriangle },
   warning: { bg: "#FCECEA", color: COLORS.red, Icon: AlertTriangle },
   info: { bg: "#E8F5F5", color: COLORS.teal, Icon: Info },
