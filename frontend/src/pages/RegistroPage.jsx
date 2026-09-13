@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Printer } from "lucide-react";
+import { Printer, Camera, FileText, Download, Trash2 } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
 import { Card } from "../components/Card";
 import { Table } from "../components/Table";
@@ -90,6 +90,10 @@ export function RegistroPage({ onVerExpediente }) {
   const [mostrarFicha, setMostrarFicha] = useState(false);
   const [escanerAbierto, setEscanerAbierto] = useState(false);
   const [mensajeDocumento, setMensajeDocumento] = useState(null);
+  const [mensajeFichaDocumento, setMensajeFichaDocumento] = useState(null);
+  // Paciente al que se le escanearan documentos (seccion "Paciente nuevo"):
+  // por defecto, el ultimo paciente registrado en esta sesion.
+  const [pacienteEscanear, setPacienteEscanear] = useState(null);
   const { data: pacienteDetalle, reload: reloadPacienteDetalle } = useFetch(
     ingresoPacienteId ? `/pacientes/${ingresoPacienteId}` : null,
     { enabled: !!ingresoPacienteId }
@@ -100,6 +104,10 @@ export function RegistroPage({ onVerExpediente }) {
   const { data: documentosPaciente, reload: reloadDocumentos } = useFetch(
     puedeVerDocumentos && ingresoPacienteId ? `/pacientes/${ingresoPacienteId}/documentos` : null,
     { enabled: !!(puedeVerDocumentos && ingresoPacienteId) }
+  );
+  const { data: documentosEscanear, reload: reloadDocumentosEscanear } = useFetch(
+    puedeVerDocumentos && pacienteEscanear?.id ? `/pacientes/${pacienteEscanear.id}/documentos` : null,
+    { enabled: !!(puedeVerDocumentos && pacienteEscanear?.id) }
   );
   const [ingresoForm, setIngresoForm] = useState(CAMPOS_INGRESO_VACIOS);
   const [guardandoIngreso, setGuardandoIngreso] = useState(false);
@@ -194,20 +202,20 @@ export function RegistroPage({ onVerExpediente }) {
   }
 
   // Cambios2: el escaner entrega el PDF generado; se sube al expediente del
-  // paciente con sus metadatos (paginas y nombre legible).
+  // paciente seleccionado en "Paciente nuevo" con sus metadatos.
   async function confirmarDocumento(blob, { paginas, nombre }) {
     const fd = new FormData();
     fd.append("documento", new File([blob], nombre, { type: "application/pdf" }));
     fd.append("nombreOriginal", nombre);
     fd.append("paginas", String(paginas));
-    await api.post(`/pacientes/${ingresoPacienteId}/documentos`, fd);
-    reloadDocumentos();
-    setMensajeDocumento({ tone: "success", texto: `Documento guardado en el expediente (${paginas} página${paginas === 1 ? "" : "s"}).` });
+    await api.post(`/pacientes/${pacienteEscanear.id}/documentos`, fd);
+    reloadDocumentosEscanear();
+    setMensajeDocumento({ tone: "success", texto: `Documento guardado en el expediente de ${pacienteEscanear.nombreCompleto} (${paginas} página${paginas === 1 ? "" : "s"}).` });
   }
 
-  async function descargarDocumento(doc) {
+  async function descargarDocumento(pacienteId, doc, alError) {
     try {
-      const blob = await api.getBlob(`/pacientes/${ingresoPacienteId}/documentos/${doc.id}`);
+      const blob = await api.getBlob(`/pacientes/${pacienteId}/documentos/${doc.id}`);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -217,18 +225,18 @@ export function RegistroPage({ onVerExpediente }) {
       a.remove();
       URL.revokeObjectURL(url);
     } catch (err) {
-      setMensajeDocumento({ tone: "error", texto: err.message });
+      (alError || setMensajeDocumento)({ tone: "error", texto: err.message });
     }
   }
 
-  async function eliminarDocumento(doc) {
+  async function eliminarDocumento(pacienteId, doc, reload, alError) {
     if (!window.confirm(`¿Eliminar el documento "${doc.nombreOriginal}" del expediente?`)) return;
     try {
-      await api.del(`/pacientes/${ingresoPacienteId}/documentos/${doc.id}`);
-      reloadDocumentos();
-      setMensajeDocumento({ tone: "success", texto: "Documento eliminado del expediente." });
+      await api.del(`/pacientes/${pacienteId}/documentos/${doc.id}`);
+      reload();
+      (alError || setMensajeDocumento)({ tone: "success", texto: "Documento eliminado del expediente." });
     } catch (err) {
-      setMensajeDocumento({ tone: "error", texto: err.message });
+      (alError || setMensajeDocumento)({ tone: "error", texto: err.message });
     }
   }
 
@@ -264,6 +272,10 @@ export function RegistroPage({ onVerExpediente }) {
         medicoReferenteId: form.medicoReferenteId ? Number(form.medicoReferenteId) : undefined,
       });
       setMensaje({ tone: "success", texto: `Paciente registrado con historia clínica ${paciente.historiaClinica}` });
+      // Cambios2: deja seleccionado al paciente recien creado para poder
+      // escanearle el DPI/documentos de inmediato en esta misma pestaña.
+      setPacienteEscanear(paciente);
+      setMensajeDocumento({ tone: "info", texto: `Puede escanear los documentos de ${paciente.nombreCompleto} aquí mismo.` });
       setForm(CAMPOS_VACIOS);
       setLugarOtro(false);
       setParentescoOtro(false);
@@ -528,7 +540,66 @@ export function RegistroPage({ onVerExpediente }) {
             </div>
           </form>
         </Card>
-      ) : tab === "ingreso" && puedeRegistrar ? (
+      ) : null}
+
+      {/* Cambios2: escaneo documental del paciente dentro de "Paciente nuevo".
+          Se toma la foto o se sube el archivo y el sistema detecta bordes,
+          corrige perspectiva y aplica el filtro automaticamente. */}
+      {tab === "nuevo" && puedeRegistrar && puedeVerDocumentos && (
+        <Card style={{ marginTop: 16 }}>
+          <div className="font-semibold text-sm mb-1">Escanear documento del paciente</div>
+          <p className="text-xs mb-4" style={{ color: "#888" }}>
+            Tome la foto o suba la imagen del documento (DPI, certificado de nacimiento, referencia, constancia…):
+            el sistema detecta los bordes, corrige la perspectiva y genera el PDF en automático,
+            como un escáner de impresión. El documento queda asociado al expediente del paciente.
+          </p>
+
+          {mensajeDocumento && <Banner tone={mensajeDocumento.tone}>{mensajeDocumento.texto}</Banner>}
+
+          <div className="flex items-end gap-3 flex-wrap mt-2">
+            <FormField label="Paciente">
+              <PacienteBuscador pacienteSeleccionado={pacienteEscanear} onSelect={setPacienteEscanear} mostrarListado />
+            </FormField>
+            <Button onClick={() => setEscanerAbierto(true)} disabled={!pacienteEscanear}>
+              <span className="flex items-center gap-1.5"><Camera size={15} /> Escanear documento</span>
+            </Button>
+          </div>
+          {!pacienteEscanear && (
+            <p className="text-xs mt-2" style={{ color: COLORS.gold }}>
+              Seleccione un paciente (queda preseleccionado al registrar uno nuevo) o regístrelo primero.
+            </p>
+          )}
+
+          {pacienteEscanear && (documentosEscanear || []).length > 0 && (
+            <div className="mt-4 flex flex-col gap-2">
+              <div className="text-xs font-semibold" style={{ color: "#888" }}>
+                Documentos en el expediente de {pacienteEscanear.nombreCompleto}
+              </div>
+              {(documentosEscanear || []).map((d) => (
+                <div key={d.id} className="flex items-center gap-3 justify-between flex-wrap text-sm">
+                  <span className="flex items-center gap-2 min-w-0">
+                    <FileText size={15} style={{ color: COLORS.navy }} className="shrink-0" />
+                    <span className="font-semibold truncate">{d.nombreOriginal}</span>
+                    <span className="text-xs" style={{ color: "#999" }}>
+                      {d.paginas} pág. · {new Date(d.creadoEn).toLocaleDateString()}
+                    </span>
+                  </span>
+                  <span className="flex gap-1">
+                    <button onClick={() => descargarDocumento(pacienteEscanear.id, d)} className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-lg" style={{ color: COLORS.navy }} aria-label={`Abrir ${d.nombreOriginal}`}>
+                      <Download size={13} /> Abrir
+                    </button>
+                    <button onClick={() => eliminarDocumento(pacienteEscanear.id, d, reloadDocumentosEscanear)} className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-lg" style={{ color: COLORS.red }} aria-label={`Eliminar ${d.nombreOriginal}`}>
+                      <Trash2 size={13} /> Eliminar
+                    </button>
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      )}
+
+      {tab === "ingreso" && puedeRegistrar ? (
         <Card>
           <p className="text-xs font-semibold mb-4" style={{ color: "#888" }}>
             Ficha de ingreso y egreso (RF-05 a RF-09) — se guarda sobre un paciente ya registrado.
@@ -698,14 +769,12 @@ export function RegistroPage({ onVerExpediente }) {
       <Modal open={mostrarFicha} onClose={() => setMostrarFicha(false)} title="Ficha del paciente" maxWidth={640}>
         {pacienteDetalle && (
           <>
-            {mensajeDocumento && <Banner tone={mensajeDocumento.tone}>{mensajeDocumento.texto}</Banner>}
+            {mensajeFichaDocumento && <Banner tone={mensajeFichaDocumento.tone}>{mensajeFichaDocumento.texto}</Banner>}
             <FichaPacienteImprimible
               paciente={pacienteDetalle}
-              puedeEscanear={puedeRegistrar && !!ingresoPacienteId}
-              onEscanear={() => setEscanerAbierto(true)}
               documentos={documentosPaciente}
-              onDescargarDocumento={descargarDocumento}
-              onEliminarDocumento={puedeRegistrar ? eliminarDocumento : undefined}
+              onDescargarDocumento={(doc) => descargarDocumento(ingresoPacienteId, doc, setMensajeFichaDocumento)}
+              onEliminarDocumento={puedeRegistrar ? (doc) => eliminarDocumento(ingresoPacienteId, doc, reloadDocumentos, setMensajeFichaDocumento) : undefined}
             />
           </>
         )}
@@ -714,7 +783,7 @@ export function RegistroPage({ onVerExpediente }) {
       <CameraScannerModal
         open={escanerAbierto}
         onClose={() => setEscanerAbierto(false)}
-        pacienteId={ingresoPacienteId}
+        pacienteId={pacienteEscanear?.id}
         onConfirmar={confirmarDocumento}
       />
     </div>

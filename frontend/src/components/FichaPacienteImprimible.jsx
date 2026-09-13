@@ -23,8 +23,6 @@ function tamanoLegible(bytes) {
 // La seccion de documentos escaneados es solo pantalla (no-print).
 export function FichaPacienteImprimible({
   paciente,
-  puedeEscanear,
-  onEscanear,
   documentos,
   onDescargarDocumento,
   onEliminarDocumento,
@@ -46,7 +44,7 @@ export function FichaPacienteImprimible({
 
   return (
     <div id="printable-area" className="text-black" style={{ fontSize: 13 }}>
-      <FichaHeader paciente={p} onImprimir={() => window.print()} puedeEscanear={puedeEscanear} onEscanear={onEscanear} />
+      <FichaHeader paciente={p} onImprimir={() => window.print()} />
 
       {/* 1. Identificacion del paciente */}
       <FichaSeccion titulo="Identificación del paciente">
@@ -166,7 +164,7 @@ export function FichaPacienteImprimible({
       </p>
 
       {/* Documentos escaneados del paciente (solo pantalla, no se imprime) */}
-      {(puedeEscanear || (documentos || []).length > 0) && (
+      {(documentos || []).length > 0 && (
         <div className="no-print mt-4 rounded-xl overflow-hidden" style={{ border: `1px solid ${COLORS.border}` }}>
           <div
             className="text-xs font-bold uppercase tracking-wide px-3 py-2"

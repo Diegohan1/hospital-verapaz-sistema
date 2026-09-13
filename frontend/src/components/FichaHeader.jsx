@@ -1,26 +1,18 @@
 import React from "react";
-import { Printer, Camera } from "lucide-react";
+import { Printer } from "lucide-react";
 import { Button } from "./Button";
 import { COLORS } from "../styles/tokens";
 import logoVerapaz from "../assets/logo-verapaz.png";
 
-// Encabezado institucional de la ficha: zona de acciones superior (imprimir
-// y escanear documento con la cámara, con etiqueta accesible, marcadas como
-// no-print) seguida del membrete y los metadatos principales. Se monta
-// dentro del area imprimible de FichaPacienteImprimible.
-export function FichaHeader({ paciente, onImprimir, onEscanear, puedeEscanear }) {
+// Encabezado institucional de la ficha: zona de acciones superior (imprimir,
+// con etiqueta accesible, marcada como no-print) seguida del membrete y los
+// metadatos principales. Se monta dentro del area imprimible de
+// FichaPacienteImprimible.
+export function FichaHeader({ paciente, onImprimir }) {
   const p = paciente || {};
   return (
     <>
       <div className="flex justify-end gap-2 mb-3 no-print">
-        {puedeEscanear && (
-          <Button variant="secondary" onClick={onEscanear}>
-            <span className="flex items-center gap-1.5">
-              <Camera size={15} aria-hidden />
-              <span aria-label="Escanear documento del paciente con la cámara">Escanear documento</span>
-            </span>
-          </Button>
-        )}
         <Button onClick={onImprimir}>
           <span className="flex items-center gap-1.5">
             <Printer size={15} aria-hidden />

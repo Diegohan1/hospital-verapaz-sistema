@@ -5,7 +5,7 @@
 // homografia con muestreo bilinear, rotacion de 90 grados y filtros
 // color / grises / documento con estiramiento de contraste por percentiles.
 
-const ANCHO_ANALISIS = 260; // resolucion del mapa de bordes (rapido y suficiente)
+const ANCHO_ANALISIS = 400; // resolucion del mapa de bordes (rapido y suficiente)
 
 export function canvasDesdeDataUrl(dataUrl) {
   return new Promise((resolve, reject) => {
@@ -119,25 +119,29 @@ function puntosDeLado(mag, w, h, umbral, lado) {
   return puntos;
 }
 
-// Deteccion automatica del cuadrilatero dominante. Devuelve las 4 esquinas
-// en coordenadas del canvas original (TL, TR, BR, BL) o null si no hay
-// confianza suficiente — en ese caso se usa el recorte manual.
-export function detectarEsquinas(canvas) {
-  const { gris, w, h } = escalaGrises(canvas, ANCHO_ANALISIS);
-  const { mag, media, desviacion } = mapaBordes(gris, w, h);
-  const umbral = Math.max(60, media + 1.3 * desviacion);
-
-  const lineas = {};
+// Deteccion automatica del cuadrilatero dominante con un solo umbral.
+// Devuelve { esquinas, cobertura } o null si no hay confianza. La cobertura
+// (0-1) mide que proporcion de cada lado del documento se detecto.
+function intentarDeteccion(mag, w, h, umbral) {
+  const lados = {};
+  let coberturaMinima = 1;
   for (const lado of ["arriba", "abajo", "izquierda", "derecha"]) {
     const puntos = puntosDeLado(mag, w, h, umbral, lado);
-    lineas[lado] = puntos.length >= w * 0.08 ? ajustarLinea(puntos) : null;
+    const lineasEscaneadas = (lado === "arriba" || lado === "abajo")
+      ? Math.floor((w * 0.9 - w * 0.1) / 2)
+      : Math.floor((h * 0.9 - h * 0.1) / 2);
+    const cobertura = puntos.length / lineasEscaneadas;
+    if (cobertura < 0.2) return null;
+    const linea = ajustarLinea(puntos);
+    if (!linea) return null;
+    lados[lado] = linea;
+    coberturaMinima = Math.min(coberturaMinima, cobertura);
   }
-  if (!lineas.arriba || !lineas.abajo || !lineas.izquierda || !lineas.derecha) return null;
 
-  const tl = interseccion(lineas.arriba, lineas.izquierda);
-  const tr = interseccion(lineas.arriba, lineas.derecha);
-  const br = interseccion(lineas.abajo, lineas.derecha);
-  const bl = interseccion(lineas.abajo, lineas.izquierda);
+  const tl = interseccion(lados.arriba, lados.izquierda);
+  const tr = interseccion(lados.arriba, lados.derecha);
+  const br = interseccion(lados.abajo, lados.derecha);
+  const bl = interseccion(lados.abajo, lados.izquierda);
   const esquinas = [tl, tr, br, bl];
 
   // Validaciones: dentro de margen, convexidad y area significativa
@@ -150,9 +154,48 @@ export function detectarEsquinas(canvas) {
   }
   if (areaQuad(esquinas) < 0.18 * w * h) return null;
 
+  return { esquinas, cobertura: coberturaMinima };
+}
+
+// Deteccion mejorada estilo "escaner de impresora": prueba varios umbrales
+// adaptativos sobre la energia de bordes y se queda con el cuadrilatero de
+// mayor cobertura. Devuelve las 4 esquinas en coordenadas del canvas
+// original (TL, TR, BR, BL) o null si ningun umbral da confianza.
+export function detectarEsquinasMejorada(canvas) {
+  const { gris, w, h } = escalaGrises(canvas, ANCHO_ANALISIS);
+  const { mag, media, desviacion } = mapaBordes(gris, w, h);
+
+  const umbrales = [
+    media + 0.8 * desviacion,
+    media + 1.1 * desviacion,
+    media + 1.5 * desviacion,
+    media + 1.9 * desviacion,
+    90,
+  ]
+    .map((u) => Math.max(45, u))
+    .filter((u, i, lista) => lista.indexOf(u) === i);
+
+  let mejor = null;
+  for (const umbral of umbrales) {
+    const intento = intentarDeteccion(mag, w, h, umbral);
+    if (intento && (!mejor || intento.cobertura > mejor.cobertura)) {
+      mejor = intento;
+      if (mejor.cobertura > 0.6) break; // suficiente confianza, no seguir
+    }
+  }
+  if (!mejor) return null;
+
   // Escalar de vuelta a la resolucion original
   const factor = canvas.width / w;
-  return esquinas.map((e) => ({ x: Math.min(Math.max(e.x * factor, 0), canvas.width), y: Math.min(Math.max(e.y * factor, 0), canvas.height) }));
+  return mejor.esquinas.map((e) => ({
+    x: Math.min(Math.max(e.x * factor, 0), canvas.width),
+    y: Math.min(Math.max(e.y * factor, 0), canvas.height),
+  }));
+}
+
+// Compatibilidad: deteccion de un solo umbral (usada por detectarEsquinasMejorada)
+export function detectarEsquinas(canvas) {
+  return detectarEsquinasMejorada(canvas);
 }
 
 // ------- Correccion de perspectiva (homografia + muestreo bilinear) -------
@@ -316,4 +359,26 @@ export async function procesarPagina(dataUrl, { esquinas, rotaciones = 0, filtro
   if (!canvas) canvas = base;
   for (let i = 0; i < ((rotaciones % 4) + 4) % 4; i++) canvas = rotar90(canvas);
   return aplicarFiltro(canvas, filtro);
+}
+
+// Pipeline automatico estilo escaner de impresion: toma la captura tal cual,
+// detecta los bordes del documento (multi-umbral con puntaje), corrige la
+// perspectiva y aplica el filtro documento (alto contraste) sin preguntar
+// nada al usuario. Si la deteccion no tiene confianza, usa el encuadre
+// completo para no bloquear el escaneo.
+export async function procesarEscaneoAutomatico(dataUrl, { maxAncho = 1600 } = {}) {
+  const base = await canvasDesdeDataUrl(dataUrl);
+  let detectado = true;
+  let canvas = null;
+
+  try {
+    const esquinas = detectarEsquinasMejorada(base);
+    if (esquinas) canvas = rectificarPerspectiva(base, esquinas, maxAncho);
+    else detectado = false;
+  } catch {
+    detectado = false;
+  }
+  if (!canvas) canvas = base;
+
+  return { canvas: aplicarFiltro(canvas, "documento"), detectado };
 }
