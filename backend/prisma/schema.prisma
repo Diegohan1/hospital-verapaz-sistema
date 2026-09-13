@@ -47,6 +47,7 @@ model Usuario {
   accesosDiagnostico AccesoDiagnostico[] @relation("AccesoDiagnosticoUsuario")
   logs             LogActividad[]  @relation("LogActividadUsuario")
   passwordResetTokens PasswordResetToken[]
+  documentosRegistrados DocumentoPaciente[] @relation("DocumentoRegistradoPor")
 }
 
 // Sprint 2: tokens de recuperacion de contrasena. Se guarda el hash SHA-256
@@ -154,6 +155,7 @@ model Paciente {
   maternidad         RegistroMaternidad?
   egresoClinico      EgresoClinico?
   anexos             AnexoPaciente[]
+  documentos         DocumentoPaciente[]
   diagnosticos       Diagnostico[]
   tratamientos       TratamientoItem[]
   recetas            Receta[]
@@ -203,6 +205,33 @@ model AnexoPaciente {
   paciente Paciente @relation(fields: [pacienteId], references: [id])
 
   @@index([pacienteId])
+}
+
+// Cambios2 Sprint 5: documentos del paciente generados por el escaner de
+// camara (PDF de una o varias paginas procesadas). El binario se almacena
+// cifrado (AES-256-GCM) en el volumen de documentos; esta fila guarda
+// metadatos no sensibles, checksum de integridad y auditoria de creacion.
+// La eliminacion es logica (eliminadoEn) segun politica de retencion.
+model DocumentoPaciente {
+  id             Int       @id @default(autoincrement())
+  pacienteId     Int
+  nombreOriginal String
+  nombreArchivo  String    // nombre interno aleatorio generado por el servidor
+  mimeType       String
+  tamano         Int
+  checksum       String    // SHA-256 del binario original para integridad
+  paginas        Int       @default(1)
+  tipoDocumental String?   // ej. "identificacion", "expediente", "constancia"
+  registradoPor  Int
+  creadoEn       DateTime  @default(now())
+  eliminadoEn    DateTime?
+
+  paciente     Paciente @relation(fields: [pacienteId], references: [id])
+  registrador  Usuario  @relation("DocumentoRegistradoPor", fields: [registradoPor], references: [id])
+
+  @@index([pacienteId])
+  @@index([creadoEn])
+  @@index([tipoDocumental])
 }
 
 // RF-07: seccion de maternidad (cuando aplica)
