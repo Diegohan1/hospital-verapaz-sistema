@@ -7,6 +7,7 @@ import { Button } from "../components/Button";
 import { Banner } from "../components/Banner";
 import { Modal } from "../components/Modal";
 import { FichaPacienteImprimible } from "../components/FichaPacienteImprimible";
+import { CameraScannerModal } from "../components/CameraScannerModal";
 import { PacienteBuscador } from "../components/PacienteBuscador";
 import { FormField, TextInput, Select, TextArea } from "../components/FormField";
 import { Combobox } from "../components/Combobox";
@@ -87,9 +88,18 @@ export function RegistroPage({ onVerExpediente }) {
 
   const [ingresoPacienteId, setIngresoPacienteId] = useState(null);
   const [mostrarFicha, setMostrarFicha] = useState(false);
+  const [escanerAbierto, setEscanerAbierto] = useState(false);
+  const [mensajeDocumento, setMensajeDocumento] = useState(null);
   const { data: pacienteDetalle, reload: reloadPacienteDetalle } = useFetch(
     ingresoPacienteId ? `/pacientes/${ingresoPacienteId}` : null,
     { enabled: !!ingresoPacienteId }
+  );
+  // Cambios2: documentos escaneados del paciente (visible para admision y
+  // personal clinico; el backend repite la autorizacion por rol).
+  const puedeVerDocumentos = tieneRol(usuario, ROLES.ADMIN, ROLES.RECEPCION, ROLES.CONSULTA, ROLES.ENFERMERIA);
+  const { data: documentosPaciente, reload: reloadDocumentos } = useFetch(
+    puedeVerDocumentos && ingresoPacienteId ? `/pacientes/${ingresoPacienteId}/documentos` : null,
+    { enabled: !!(puedeVerDocumentos && ingresoPacienteId) }
   );
   const [ingresoForm, setIngresoForm] = useState(CAMPOS_INGRESO_VACIOS);
   const [guardandoIngreso, setGuardandoIngreso] = useState(false);
@@ -180,6 +190,45 @@ export function RegistroPage({ onVerExpediente }) {
       setMensajeIngreso({ tone: "error", texto: err.message });
     } finally {
       setGuardandoIngreso(false);
+    }
+  }
+
+  // Cambios2: el escaner entrega el PDF generado; se sube al expediente del
+  // paciente con sus metadatos (paginas y nombre legible).
+  async function confirmarDocumento(blob, { paginas, nombre }) {
+    const fd = new FormData();
+    fd.append("documento", new File([blob], nombre, { type: "application/pdf" }));
+    fd.append("nombreOriginal", nombre);
+    fd.append("paginas", String(paginas));
+    await api.post(`/pacientes/${ingresoPacienteId}/documentos`, fd);
+    reloadDocumentos();
+    setMensajeDocumento({ tone: "success", texto: `Documento guardado en el expediente (${paginas} página${paginas === 1 ? "" : "s"}).` });
+  }
+
+  async function descargarDocumento(doc) {
+    try {
+      const blob = await api.getBlob(`/pacientes/${ingresoPacienteId}/documentos/${doc.id}`);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = doc.nombreOriginal;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setMensajeDocumento({ tone: "error", texto: err.message });
+    }
+  }
+
+  async function eliminarDocumento(doc) {
+    if (!window.confirm(`¿Eliminar el documento "${doc.nombreOriginal}" del expediente?`)) return;
+    try {
+      await api.del(`/pacientes/${ingresoPacienteId}/documentos/${doc.id}`);
+      reloadDocumentos();
+      setMensajeDocumento({ tone: "success", texto: "Documento eliminado del expediente." });
+    } catch (err) {
+      setMensajeDocumento({ tone: "error", texto: err.message });
     }
   }
 
@@ -647,8 +696,27 @@ export function RegistroPage({ onVerExpediente }) {
       ) : null}
 
       <Modal open={mostrarFicha} onClose={() => setMostrarFicha(false)} title="Ficha del paciente" maxWidth={640}>
-        {pacienteDetalle && <FichaPacienteImprimible paciente={pacienteDetalle} />}
+        {pacienteDetalle && (
+          <>
+            {mensajeDocumento && <Banner tone={mensajeDocumento.tone}>{mensajeDocumento.texto}</Banner>}
+            <FichaPacienteImprimible
+              paciente={pacienteDetalle}
+              puedeEscanear={puedeRegistrar && !!ingresoPacienteId}
+              onEscanear={() => setEscanerAbierto(true)}
+              documentos={documentosPaciente}
+              onDescargarDocumento={descargarDocumento}
+              onEliminarDocumento={puedeRegistrar ? eliminarDocumento : undefined}
+            />
+          </>
+        )}
       </Modal>
+
+      <CameraScannerModal
+        open={escanerAbierto}
+        onClose={() => setEscanerAbierto(false)}
+        pacienteId={ingresoPacienteId}
+        onConfirmar={confirmarDocumento}
+      />
     </div>
   );
 }

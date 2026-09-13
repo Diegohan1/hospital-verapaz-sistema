@@ -1,9 +1,17 @@
 import React from "react";
+import { Download, Trash2, FileText } from "lucide-react";
 import { FichaHeader } from "./FichaHeader";
 import { FichaSeccion } from "./FichaSeccion";
 import { FichaCampo } from "./FichaCampo";
 import { COLORS } from "../styles/tokens";
 import { etiquetaCondicionEgreso } from "../utils/condicionesEgreso";
+
+function tamanoLegible(bytes) {
+  if (bytes == null) return "—";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 // Ficha general del paciente (RF-09), reorganizada en secciones logicas
 // con orden clinico-administrativo de lectura:
@@ -12,7 +20,15 @@ import { etiquetaCondicionEgreso } from "../utils/condicionesEgreso";
 //   9) maternidad     10) firmas
 // Sprint 2 (Cambios2): el orden de impresion coincide con el de pantalla;
 // emergencia y encargado legal son secciones separadas y diferenciadas.
-export function FichaPacienteImprimible({ paciente, puedeEscanear, onEscanear }) {
+// La seccion de documentos escaneados es solo pantalla (no-print).
+export function FichaPacienteImprimible({
+  paciente,
+  puedeEscanear,
+  onEscanear,
+  documentos,
+  onDescargarDocumento,
+  onEliminarDocumento,
+}) {
   const p = paciente;
   // El egreso clinico llega cifrado como objeto egresoClinico; los campos
   // planos legacy son fallback de datos registrados antes del cifrado.
@@ -148,6 +164,46 @@ export function FichaPacienteImprimible({ paciente, puedeEscanear, onEscanear })
       <p className="text-center text-xs italic" style={{ color: COLORS.navy }}>
         Comprometidos con tu salud, siempre.
       </p>
+
+      {/* Documentos escaneados del paciente (solo pantalla, no se imprime) */}
+      {(puedeEscanear || (documentos || []).length > 0) && (
+        <div className="no-print mt-4 rounded-xl overflow-hidden" style={{ border: `1px solid ${COLORS.border}` }}>
+          <div
+            className="text-xs font-bold uppercase tracking-wide px-3 py-2"
+            style={{ backgroundColor: COLORS.lightBg, color: COLORS.text }}
+          >
+            Documentos escaneados del paciente
+          </div>
+          <div className="p-3 flex flex-col gap-2">
+            {(documentos || []).length === 0 && (
+              <p className="text-sm" style={{ color: "#888" }}>Este paciente aún no tiene documentos escaneados.</p>
+            )}
+            {(documentos || []).map((d) => (
+              <div key={d.id} className="flex items-center gap-3 justify-between flex-wrap text-sm">
+                <span className="flex items-center gap-2 min-w-0">
+                  <FileText size={15} style={{ color: COLORS.navy }} className="shrink-0" />
+                  <span className="font-semibold truncate">{d.nombreOriginal}</span>
+                  <span className="text-xs" style={{ color: "#999" }}>
+                    {d.paginas} pág. · {tamanoLegible(d.tamano)} · {new Date(d.creadoEn).toLocaleDateString()}
+                  </span>
+                </span>
+                <span className="flex gap-1">
+                  {onDescargarDocumento && (
+                    <button onClick={() => onDescargarDocumento(d)} className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-lg" style={{ color: COLORS.navy }} aria-label={`Descargar ${d.nombreOriginal}`}>
+                      <Download size={13} /> Abrir
+                    </button>
+                  )}
+                  {onEliminarDocumento && (
+                    <button onClick={() => onEliminarDocumento(d)} className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-lg" style={{ color: COLORS.red }} aria-label={`Eliminar ${d.nombreOriginal}`}>
+                      <Trash2 size={13} /> Eliminar
+                    </button>
+                  )}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
