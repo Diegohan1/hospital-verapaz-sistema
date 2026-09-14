@@ -1,0 +1,26 @@
+-- CreateTable
+CREATE TABLE "DocumentoPaciente" (
+    "id" SERIAL NOT NULL,
+    "pacienteId" INTEGER NOT NULL,
+    "nombreOriginal" TEXT NOT NULL,
+    "nombreArchivo" TEXT NOT NULL,
+    "mimeType" TEXT NOT NULL,
+    "tamano" INTEGER NOT NULL,
+    "checksum" TEXT NOT NULL,
+    "paginas" INTEGER NOT NULL DEFAULT 1,
+    "tipoDocumental" TEXT,
+    "registradoPor" INTEGER NOT NULL,
+    "creadoEn" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "eliminadoEn" TIMESTAMP(3),
+
+    CONSTRAINT "DocumentoPaciente_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateIndex
+CREATE INDEX "DocumentoPaciente_pacienteId_idx" ON "DocumentoPaciente"("pacienteId");
+CREATE INDEX "DocumentoPaciente_creadoEn_idx" ON "DocumentoPaciente"("creadoEn");
+CREATE INDEX "DocumentoPaciente_tipoDocumental_idx" ON "DocumentoPaciente"("tipoDocumental");
+
+-- AddForeignKey
+ALTER TABLE "DocumentoPaciente" ADD CONSTRAINT "DocumentoPaciente_pacienteId_fkey" FOREIGN KEY ("pacienteId") REFERENCES "Paciente"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "DocumentoPaciente" ADD CONSTRAINT "DocumentoPaciente_registradoPor_fkey" FOREIGN KEY ("registradoPor") REFERENCES "Usuario"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

@@ -54,5 +54,6 @@ export const api = {
   get: (path, options) => request(path, options),
   post: (path, body, options) => request(path, { ...options, method: "POST", body: body instanceof FormData ? body : JSON.stringify(body) }),
   put: (path, body, options) => request(path, { ...options, method: "PUT", body: JSON.stringify(body) }),
+  del: (path, options) => request(path, { ...options, method: "DELETE" }),
   getBlob: (path, options) => requestBlob(path, options),
 };

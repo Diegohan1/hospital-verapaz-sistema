@@ -40,7 +40,7 @@ export function CambiarPasswordPage() {
   return (
     <div
       className="min-h-screen flex items-center justify-center p-4 sm:p-6"
-      style={{ background: `linear-gradient(135deg, ${COLORS.lightBg} 0%, #E3F0E7 100%)` }}
+      style={{ background: `linear-gradient(135deg, ${COLORS.lightBg} 0%, #E5F6EE 100%)` }}
     >
       <div className="animate-fade-in-up w-full max-w-md rounded-2xl overflow-hidden shadow-lifted bg-white">
         <div
@@ -72,7 +72,7 @@ export function CambiarPasswordPage() {
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
                   className="w-full pl-10 pr-3.5 py-2.5 rounded-xl text-sm border outline-none transition-all duration-150 focus:border-navy focus:ring-2 focus:shadow-soft"
-                  style={{ borderColor: COLORS.border, "--tw-ring-color": "rgba(15, 122, 61, 0.18)" }}
+                  style={{ borderColor: COLORS.border, "--tw-ring-color": "rgba(0, 134, 67, 0.18)" }}
                 />
               </div>
             </div>
@@ -88,7 +88,7 @@ export function CambiarPasswordPage() {
                   onChange={(e) => setConfirmacion(e.target.value)}
                   placeholder="••••••••"
                   className="w-full pl-10 pr-3.5 py-2.5 rounded-xl text-sm border outline-none transition-all duration-150 focus:border-navy focus:ring-2 focus:shadow-soft"
-                  style={{ borderColor: COLORS.border, "--tw-ring-color": "rgba(15, 122, 61, 0.18)" }}
+                  style={{ borderColor: COLORS.border, "--tw-ring-color": "rgba(0, 134, 67, 0.18)" }}
                 />
               </div>
             </div>

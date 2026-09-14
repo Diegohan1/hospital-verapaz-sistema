@@ -243,7 +243,7 @@ export function ReportesPage() {
                       style={
                         a.accion === "registrar"
                           ? { backgroundColor: "#FBF2E1", color: COLORS.gold }
-                          : { backgroundColor: "#E6F4EC", color: COLORS.navy }
+                          : { backgroundColor: "#E5F6EE", color: COLORS.navy }
                       }
                     >
                       {a.accion === "registrar" ? "Registro / edición" : "Visualización"}
@@ -309,7 +309,7 @@ export function ReportesPage() {
               renderRow={(l) => (
                 <>
                   <td className="px-4 py-3 font-semibold">{l.usuario?.nombre || "—"}</td>
-                  <td className="px-4 py-3"><span className="text-xs font-semibold px-2 py-1 rounded-full" style={{ backgroundColor: "#E6F4EC", color: COLORS.navy }}>{l.accion}</span></td>
+                  <td className="px-4 py-3"><span className="text-xs font-semibold px-2 py-1 rounded-full" style={{ backgroundColor: "#E5F6EE", color: COLORS.navy }}>{l.accion}</span></td>
                   <td className="px-4 py-3" style={{ color: "#666" }}>{l.detalle || "—"}</td>
                   <td className="px-4 py-3" style={{ color: "#666" }}>{new Date(l.fecha).toLocaleString()}</td>
                 </>
