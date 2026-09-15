@@ -222,6 +222,10 @@ model DocumentoPaciente {
   checksum       String    // SHA-256 del binario original para integridad
   paginas        Int       @default(1)
   tipoDocumental String?   // ej. "identificacion", "expediente", "constancia"
+  // Dev-Mari: fecha escrita en el papel original (cuando el doctor lo lleno),
+  // extraida por OCR o capturada a mano. Distinta de creadoEn, que es cuando
+  // el registro se creo en el sistema.
+  fechaDocumentoOriginal DateTime?
   registradoPor  Int
   creadoEn       DateTime  @default(now())
   eliminadoEn    DateTime?

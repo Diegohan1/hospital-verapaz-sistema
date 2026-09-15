@@ -55,6 +55,16 @@ export function guardarArchivoCifrado(buffer, directorio, keyHex) {
   return nombre;
 }
 
+// Valida que el buffer sea realmente un PDF: el Content-Type que manda el
+// cliente no es confiable, por eso tambien se revisan los magic bytes
+// (%PDF- al inicio del archivo).
+export function validarPdf(file) {
+  const magic = file.buffer.subarray(0, 5).toString("latin1");
+  if (magic !== "%PDF-") return "El archivo no es un PDF válido";
+  if (file.mimetype !== "application/pdf") return "El MIME type no corresponde a un PDF";
+  return null;
+}
+
 export function tamanoLegible(bytes) {
   if (bytes == null) return "—";
   if (bytes < 1024) return `${bytes} B`;

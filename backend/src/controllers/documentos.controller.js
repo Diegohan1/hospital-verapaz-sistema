@@ -10,7 +10,7 @@ import crypto from "crypto";
 import multer from "multer";
 import { prisma } from "../config/prisma.js";
 import { leerArchivoCifrado } from "../utils/crypto.util.js";
-import { guardarArchivoCifrado } from "../utils/archivos.util.js";
+import { guardarArchivoCifrado, validarPdf } from "../utils/archivos.util.js";
 import { registrarActividad } from "../services/actividad.service.js";
 
 const DOCUMENTOS_DIR = path.join(process.cwd(), "uploads", "documentos");
@@ -29,6 +29,7 @@ export const uploadDocumento = multer({
 const SELECT_METADATOS = {
   id: true, nombreOriginal: true, mimeType: true, tamano: true,
   paginas: true, tipoDocumental: true, checksum: true, creadoEn: true,
+  fechaDocumentoOriginal: true,
   registradoPor: true, registrador: { select: { nombre: true } },
 };
 
@@ -42,15 +43,8 @@ export async function subir(req, res) {
   const file = req.file;
   if (!file) return res.status(400).json({ error: "Adjunte el PDF del documento" });
 
-  // Validacion de MIME real por magic bytes (el Content-Type del cliente es
-  // dato no confiable): un PDF siempre empieza con %PDF-
-  const magic = file.buffer.subarray(0, 5).toString("latin1");
-  if (magic !== "%PDF-") {
-    return res.status(422).json({ error: "El archivo no es un PDF válido" });
-  }
-  if (file.mimetype !== "application/pdf") {
-    return res.status(422).json({ error: "El MIME type no corresponde a un PDF" });
-  }
+  const errorPdf = validarPdf(file);
+  if (errorPdf) return res.status(422).json({ error: errorPdf });
 
   const nombreOriginal = path.basename(req.body.nombreOriginal || file.originalname || "documento.pdf").replace(/[^\w.\-() ]/g, "_");
   if (!/\.pdf$/i.test(nombreOriginal)) {
@@ -81,6 +75,7 @@ export async function subir(req, res) {
       checksum,
       paginas,
       tipoDocumental: req.body.tipoDocumental || null,
+      fechaDocumentoOriginal: req.body.fechaDocumentoOriginal ? new Date(req.body.fechaDocumentoOriginal) : null,
       registradoPor: req.user.id,
     },
     select: SELECT_METADATOS,

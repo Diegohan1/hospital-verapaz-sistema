@@ -3,12 +3,18 @@
 // operaciones, autopsia, causa de muerte) se guardan cifrados en la entidad
 // EgresoClinico, separados de los datos administrativos del Paciente. Los
 // listados nunca exponen esos campos (DTO con select explicito).
+import path from "node:path";
+import crypto from "crypto";
 import { prisma } from "../config/prisma.js";
 import { encrypt, decrypt } from "../utils/crypto.util.js";
 import { ENCRYPTION_KEY } from "../config/env.js";
 import { registrarActividad } from "../services/actividad.service.js";
 import { leerPaginacion } from "../utils/paginacion.util.js";
 import { ROLES } from "../utils/roles.util.js";
+import { validarPdf, guardarArchivoCifrado } from "../utils/archivos.util.js";
+
+const DOCUMENTOS_DIR = path.join(process.cwd(), "uploads", "documentos");
+const DOCUMENT_MAX_MB = Number(process.env.DOCUMENT_MAX_MB || 20);
 
 // Campos administrativos, de ingreso y de egreso administrativo (no
 // sensibles). Los campos clinicos de egreso NO van aqui: viajan cifrados en
@@ -47,6 +53,10 @@ function tomarCampos(body) {
     if (body[campo] === undefined) continue;
     if (["fechaNacimiento", "fechaIngreso", "fechaEgreso"].includes(campo)) {
       data[campo] = body[campo] ? new Date(body[campo]) : null;
+    } else if (["edad", "medicoReferenteId"].includes(campo)) {
+      // Dev-Mari: cuando el registro llega como multipart/form-data (flujo
+      // de escaneo), estos campos numericos viajan como texto.
+      data[campo] = body[campo] === "" || body[campo] == null ? null : Number(body[campo]);
     } else {
       data[campo] = body[campo];
     }
@@ -214,6 +224,12 @@ export async function obtenerUno(req, res) {
 // RF-01/RF-03/RF-04: registrar paciente nuevo, generar historia clinica
 // y evitar duplicados por DPI. Un DPI duplicado responde 409 sin crear
 // datos parciales y sin exponer los datos del paciente existente.
+//
+// Dev-Mari: admite un PDF opcional (campo "documento", multipart/form-data)
+// con el expediente fisico escaneado. Los datos del paciente pueden venir
+// tecleados a mano o autorellenados por OCR a partir de ese mismo escaneo;
+// en ambos casos es este unico endpoint el que registra todo junto, para
+// nunca dejar un documento guardado sin su paciente o viceversa.
 export async function crear(req, res) {
   const errorValidacion = validarPaciente(req.body);
   if (errorValidacion) return res.status(400).json({ error: errorValidacion });
@@ -231,6 +247,13 @@ export async function crear(req, res) {
   const errorEgreso = validarEgresoClinico(payloadEgreso, req.body.condicionEgreso);
   if (errorEgreso) return res.status(422).json({ error: errorEgreso });
 
+  // El PDF se valida antes de tocar la base de datos: si no es un PDF
+  // valido, no tiene sentido crear el paciente sin su respaldo escaneado.
+  if (req.file) {
+    const errorPdf = validarPdf(req.file);
+    if (errorPdf) return res.status(422).json({ error: errorPdf });
+  }
+
   const paciente = await prisma.$transaction(async (tx) => {
     const creado = await tx.paciente.create({
       data: { ...tomarCampos(req.body), historiaClinica: `PENDIENTE-${Date.now()}` },
@@ -245,10 +268,35 @@ export async function crear(req, res) {
       const { encrypted, iv, authTag } = encrypt(JSON.stringify(payloadEgreso), ENCRYPTION_KEY);
       await tx.egresoClinico.create({ data: { pacienteId: creado.id, textoCifrado: encrypted, iv, authTag } });
     }
+    if (req.file) {
+      const checksum = crypto.createHash("sha256").update(req.file.buffer).digest("hex");
+      const nombreArchivo = guardarArchivoCifrado(req.file.buffer, DOCUMENTOS_DIR, ENCRYPTION_KEY);
+      const nombreOriginal = path
+        .basename(req.body.nombreDocumento || req.file.originalname || "expediente.pdf")
+        .replace(/[^\w.\-() ]/g, "_");
+      await tx.documentoPaciente.create({
+        data: {
+          pacienteId: creado.id,
+          nombreOriginal,
+          nombreArchivo,
+          mimeType: "application/pdf",
+          tamano: req.file.size,
+          checksum,
+          paginas: Number(req.body.paginas) || 1,
+          tipoDocumental: "expediente_admision",
+          fechaDocumentoOriginal: req.body.fechaDocumentoOriginal ? new Date(req.body.fechaDocumentoOriginal) : null,
+          registradoPor: req.user.id,
+        },
+      });
+    }
     return conHistoria;
   });
 
-  await registrarActividad(req.user.id, "crear_paciente", `${paciente.nombreCompleto} (${paciente.historiaClinica})`);
+  await registrarActividad(
+    req.user.id,
+    "crear_paciente",
+    `${paciente.nombreCompleto} (${paciente.historiaClinica})${req.file ? " + expediente escaneado" : ""}`
+  );
   res.status(201).json(paciente);
 }
 

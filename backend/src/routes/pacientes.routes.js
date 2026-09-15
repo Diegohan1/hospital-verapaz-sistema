@@ -11,7 +11,11 @@ router.use(requireAuth);
 
 router.get("/", controller.listar);
 router.get("/:id", controller.obtenerUno);
-router.post("/", requireRole(ROLES.RECEPCION, ROLES.ADMIN), controller.crear);
+// Dev-Mari: el PDF del expediente escaneado (si lo hay) es opcional y
+// viaja en el mismo POST del registro del paciente (multipart/form-data).
+// uploadDocumento no exige el archivo: si la peticion es JSON normal
+// (registro manual, sin escaneo), multer no hace nada y sigue de largo.
+router.post("/", requireRole(ROLES.RECEPCION, ROLES.ADMIN), documentos.uploadDocumento, controller.crear);
 router.put("/:id", requireRole(ROLES.RECEPCION, ROLES.ADMIN), controller.actualizar);
 
 // Cambios2 Sprint 5: documentos escaneados del paciente (PDF del escaner).
