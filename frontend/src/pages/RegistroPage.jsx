@@ -91,9 +91,10 @@ export function RegistroPage({ onVerExpediente }) {
   const [escanerAbierto, setEscanerAbierto] = useState(false);
   const [mensajeDocumento, setMensajeDocumento] = useState(null);
   const [mensajeFichaDocumento, setMensajeFichaDocumento] = useState(null);
-  // Paciente al que se le escanearan documentos (seccion "Paciente nuevo"):
-  // por defecto, el ultimo paciente registrado en esta sesion.
-  const [pacienteEscanear, setPacienteEscanear] = useState(null);
+  // Dev-Mari: el expediente fisico se escanea ANTES de que el paciente
+  // exista — ya no depende de tener uno seleccionado. El PDF queda aqui,
+  // pendiente, hasta que se registra el paciente (un solo POST con ambos).
+  const [documentoPendiente, setDocumentoPendiente] = useState(null);
   const { data: pacienteDetalle, reload: reloadPacienteDetalle } = useFetch(
     ingresoPacienteId ? `/pacientes/${ingresoPacienteId}` : null,
     { enabled: !!ingresoPacienteId }
@@ -104,10 +105,6 @@ export function RegistroPage({ onVerExpediente }) {
   const { data: documentosPaciente, reload: reloadDocumentos } = useFetch(
     puedeVerDocumentos && ingresoPacienteId ? `/pacientes/${ingresoPacienteId}/documentos` : null,
     { enabled: !!(puedeVerDocumentos && ingresoPacienteId) }
-  );
-  const { data: documentosEscanear, reload: reloadDocumentosEscanear } = useFetch(
-    puedeVerDocumentos && pacienteEscanear?.id ? `/pacientes/${pacienteEscanear.id}/documentos` : null,
-    { enabled: !!(puedeVerDocumentos && pacienteEscanear?.id) }
   );
   const [ingresoForm, setIngresoForm] = useState(CAMPOS_INGRESO_VACIOS);
   const [guardandoIngreso, setGuardandoIngreso] = useState(false);
@@ -201,16 +198,31 @@ export function RegistroPage({ onVerExpediente }) {
     }
   }
 
-  // Cambios2: el escaner entrega el PDF generado; se sube al expediente del
-  // paciente seleccionado en "Paciente nuevo" con sus metadatos.
-  async function confirmarDocumento(blob, { paginas, nombre }) {
-    const fd = new FormData();
-    fd.append("documento", new File([blob], nombre, { type: "application/pdf" }));
-    fd.append("nombreOriginal", nombre);
-    fd.append("paginas", String(paginas));
-    await api.post(`/pacientes/${pacienteEscanear.id}/documentos`, fd);
-    reloadDocumentosEscanear();
-    setMensajeDocumento({ tone: "success", texto: `Documento guardado en el expediente de ${pacienteEscanear.nombreCompleto} (${paginas} página${paginas === 1 ? "" : "s"}).` });
+  // Dev-Mari: el escaner entrega el PDF generado + lo que el OCR pudo leer
+  // del documento (nombre, DPI, telefono, fecha). El documento se queda en
+  // memoria (documentoPendiente) — se adjunta al paciente hasta que se
+  // guarda el formulario, en una sola operacion (nunca queda un documento
+  // huerfano sin paciente ni un paciente sin su respaldo escaneado).
+  function manejarEscaneoConfirmado(blob, { paginas, nombre, datosBasicos }) {
+    setDocumentoPendiente({ blob, nombre, paginas, fechaDocumentoOriginal: datosBasicos?.fecha || "" });
+    setForm((f) => ({
+      ...f,
+      nombreCompleto: f.nombreCompleto || datosBasicos?.nombreCompleto || "",
+      dpi: f.dpi || (datosBasicos?.dpi ? limpiarDPI(datosBasicos.dpi) : ""),
+      telefono: f.telefono || (datosBasicos?.telefono ? limpiarTelefono(datosBasicos.telefono) : ""),
+    }));
+    const encontroAlgo = datosBasicos?.nombreCompleto || datosBasicos?.dpi || datosBasicos?.telefono;
+    setMensajeDocumento({
+      tone: encontroAlgo ? "success" : "info",
+      texto: encontroAlgo
+        ? "Se autorellenaron los datos que se lograron leer del documento — revíselos antes de guardar."
+        : "No se lograron leer datos automáticamente del documento; complete el formulario a mano. El escaneo igual se adjuntará al guardar.",
+    });
+  }
+
+  function quitarDocumentoPendiente() {
+    setDocumentoPendiente(null);
+    setMensajeDocumento(null);
   }
 
   async function descargarDocumento(pacienteId, doc, alError) {
@@ -265,18 +277,36 @@ export function RegistroPage({ onVerExpediente }) {
     setGuardando(true);
     setMensaje(null);
     try {
-      const paciente = await api.post("/pacientes", {
+      const datosPaciente = {
         ...form,
         edad: form.edad ? Number(form.edad) : undefined,
         fechaNacimiento: form.fechaNacimiento || undefined,
         medicoReferenteId: form.medicoReferenteId ? Number(form.medicoReferenteId) : undefined,
+      };
+
+      let paciente;
+      if (documentoPendiente) {
+        // Un solo POST con los datos del paciente + el PDF escaneado: el
+        // backend crea ambos en la misma transaccion.
+        const fd = new FormData();
+        for (const [campo, valor] of Object.entries(datosPaciente)) {
+          if (valor !== undefined && valor !== null && valor !== "") fd.append(campo, valor);
+        }
+        fd.append("documento", new File([documentoPendiente.blob], documentoPendiente.nombre, { type: "application/pdf" }));
+        fd.append("paginas", String(documentoPendiente.paginas));
+        if (documentoPendiente.fechaDocumentoOriginal) fd.append("fechaDocumentoOriginal", documentoPendiente.fechaDocumentoOriginal);
+        paciente = await api.post("/pacientes", fd);
+      } else {
+        paciente = await api.post("/pacientes", datosPaciente);
+      }
+
+      setMensaje({
+        tone: "success",
+        texto: `Paciente registrado con historia clínica ${paciente.historiaClinica}${documentoPendiente ? " (expediente escaneado adjunto)." : "."}`,
       });
-      setMensaje({ tone: "success", texto: `Paciente registrado con historia clínica ${paciente.historiaClinica}` });
-      // Cambios2: deja seleccionado al paciente recien creado para poder
-      // escanearle el DPI/documentos de inmediato en esta misma pestaña.
-      setPacienteEscanear(paciente);
-      setMensajeDocumento({ tone: "info", texto: `Puede escanear los documentos de ${paciente.nombreCompleto} aquí mismo.` });
       setForm(CAMPOS_VACIOS);
+      setDocumentoPendiente(null);
+      setMensajeDocumento(null);
       setLugarOtro(false);
       setParentescoOtro(false);
       setReligionOtro(false);
@@ -542,58 +572,48 @@ export function RegistroPage({ onVerExpediente }) {
         </Card>
       ) : null}
 
-      {/* Cambios2: escaneo documental del paciente dentro de "Paciente nuevo".
-          Se toma la foto o se sube el archivo y el sistema detecta bordes,
-          corrige perspectiva y aplica el filtro automaticamente. */}
+      {/* Dev-Mari: escaneo del expediente fisico ANTES de registrar al
+          paciente — ya no depende de tener uno seleccionado. Util cuando el
+          doctor ya lo lleno a mano en papel: se escanea, el sistema intenta
+          leer los datos basicos y autorellenar el formulario de abajo, y el
+          PDF se adjunta al guardar. El escaneo es opcional: tambien se puede
+          seguir llenando el formulario a mano sin escanear nada. */}
       {tab === "nuevo" && puedeRegistrar && puedeVerDocumentos && (
         <Card style={{ marginTop: 16 }}>
-          <div className="font-semibold text-sm mb-1">Escanear documento del paciente</div>
+          <div className="font-semibold text-sm mb-1">Escanear expediente físico (opcional)</div>
           <p className="text-xs mb-4" style={{ color: "#888" }}>
-            Tome la foto o suba la imagen del documento (DPI, certificado de nacimiento, referencia, constancia…):
-            el sistema detecta los bordes, corrige la perspectiva y genera el PDF en automático,
-            como un escáner de impresión. El documento queda asociado al expediente del paciente.
+            Si el doctor ya llenó el expediente en papel, escanéelo aquí antes de registrar: el sistema genera el PDF
+            automáticamente y trata de leer nombre, DPI, teléfono y fecha para autorellenar el formulario de abajo
+            (siempre revisable). El PDF original queda guardado tal cual, sin alterar la letra ni la firma del doctor,
+            y se adjunta al paciente al hacer clic en "Guardar paciente".
           </p>
 
           {mensajeDocumento && <Banner tone={mensajeDocumento.tone}>{mensajeDocumento.texto}</Banner>}
 
-          <div className="flex items-end gap-3 flex-wrap mt-2">
-            <FormField label="Paciente">
-              <PacienteBuscador pacienteSeleccionado={pacienteEscanear} onSelect={setPacienteEscanear} mostrarListado />
-            </FormField>
-            <Button onClick={() => setEscanerAbierto(true)} disabled={!pacienteEscanear}>
-              <span className="flex items-center gap-1.5"><Camera size={15} /> Escanear documento</span>
+          {!documentoPendiente ? (
+            <Button onClick={() => setEscanerAbierto(true)}>
+              <span className="flex items-center gap-1.5"><Camera size={15} /> Escanear expediente</span>
             </Button>
-          </div>
-          {!pacienteEscanear && (
-            <p className="text-xs mt-2" style={{ color: COLORS.gold }}>
-              Seleccione un paciente (queda preseleccionado al registrar uno nuevo) o regístrelo primero.
-            </p>
-          )}
-
-          {pacienteEscanear && (documentosEscanear || []).length > 0 && (
-            <div className="mt-4 flex flex-col gap-2">
-              <div className="text-xs font-semibold" style={{ color: "#888" }}>
-                Documentos en el expediente de {pacienteEscanear.nombreCompleto}
-              </div>
-              {(documentosEscanear || []).map((d) => (
-                <div key={d.id} className="flex items-center gap-3 justify-between flex-wrap text-sm">
-                  <span className="flex items-center gap-2 min-w-0">
-                    <FileText size={15} style={{ color: COLORS.navy }} className="shrink-0" />
-                    <span className="font-semibold truncate">{d.nombreOriginal}</span>
-                    <span className="text-xs" style={{ color: "#999" }}>
-                      {d.paginas} pág. · {new Date(d.creadoEn).toLocaleDateString()}
-                    </span>
-                  </span>
-                  <span className="flex gap-1">
-                    <button onClick={() => descargarDocumento(pacienteEscanear.id, d)} className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-lg" style={{ color: COLORS.navy }} aria-label={`Abrir ${d.nombreOriginal}`}>
-                      <Download size={13} /> Abrir
-                    </button>
-                    <button onClick={() => eliminarDocumento(pacienteEscanear.id, d, reloadDocumentosEscanear)} className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-lg" style={{ color: COLORS.red }} aria-label={`Eliminar ${d.nombreOriginal}`}>
-                      <Trash2 size={13} /> Eliminar
-                    </button>
-                  </span>
-                </div>
-              ))}
+          ) : (
+            <div className="flex items-end gap-3 justify-between flex-wrap">
+              <span className="flex items-center gap-2 min-w-0 text-sm">
+                <FileText size={15} style={{ color: COLORS.navy }} className="shrink-0" />
+                <span className="font-semibold">{documentoPendiente.nombre}</span>
+                <span className="text-xs" style={{ color: "#999" }}>
+                  {documentoPendiente.paginas} pág. — se adjuntará al guardar el paciente
+                </span>
+              </span>
+              <FormField label="Fecha en el documento (papel)">
+                <TextInput
+                  type="date"
+                  value={documentoPendiente.fechaDocumentoOriginal}
+                  onChange={(e) => setDocumentoPendiente((d) => ({ ...d, fechaDocumentoOriginal: e.target.value }))}
+                />
+                <p className="text-[11px] mt-1" style={{ color: "#999" }}>Distinta de la fecha de registro en el sistema, que se guarda sola.</p>
+              </FormField>
+              <button onClick={quitarDocumentoPendiente} className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-lg" style={{ color: COLORS.red }}>
+                <Trash2 size={13} /> Quitar escaneo
+              </button>
             </div>
           )}
         </Card>
@@ -783,8 +803,8 @@ export function RegistroPage({ onVerExpediente }) {
       <CameraScannerModal
         open={escanerAbierto}
         onClose={() => setEscanerAbierto(false)}
-        pacienteId={pacienteEscanear?.id}
-        onConfirmar={confirmarDocumento}
+        onConfirmar={manejarEscaneoConfirmado}
+        mensajeExito="El documento quedó listo — se adjuntará al paciente al hacer clic en 'Guardar paciente'."
       />
     </div>
   );

@@ -6,6 +6,7 @@ import { Banner } from "./Banner";
 import { COLORS } from "../styles/tokens";
 import { procesarEscaneoAutomatico } from "../utils/scanProcessing";
 import { generarPdfDePaginas, validarPdf, descargarPdf, nombreDescarga, tamanoLegibleMB } from "../utils/pdfDocumentos";
+import { extraerDatosBasicos } from "../utils/ocrDatosBasicos";
 
 // Escaner documental automatico (Cambios2): como un escaner de impresion —
 // se toma la foto o se sube el archivo y el sistema detecta los bordes,
@@ -62,7 +63,16 @@ function dataUrlDesdeArchivo(file) {
   });
 }
 
-export function CameraScannerModal({ open, onClose, pacienteId, onConfirmar, titulo = "Escanear documento del paciente" }) {
+export function CameraScannerModal({
+  open,
+  onClose,
+  pacienteId,
+  onConfirmar,
+  titulo = "Escanear documento del paciente",
+  // Dev-Mari: al escanear antes de registrar (sin pacienteId), el documento
+  // todavia no se guardo en el servidor, solo quedo listo en el formulario.
+  mensajeExito = "El documento se guardó en el expediente del paciente.",
+}) {
   const [estado, setEstado] = useState("idle");
   const [error, setError] = useState(null);
   const [aviso, setAviso] = useState(null); // "Página 2 escaneada y agregada"
@@ -212,12 +222,19 @@ export function CameraScannerModal({ open, onClose, pacienteId, onConfirmar, tit
         return;
       }
       const nombre = nombreDescarga(pacienteId);
+
+      // Lectura automatica de nombre/DPI/telefono/fecha (solo la primera
+      // pagina). Nunca bloquea el guardado: si falla o no reconoce nada,
+      // el formulario se sigue llenando a mano.
+      setEstado("extrayendo_datos");
+      const datosBasicos = await extraerDatosBasicos(paginas.map((p) => p.dataUrl));
+
       setPdfResultado({ blob, paginas: total, nombre });
       setEstado("confirmado");
       detenerCamara();
       if (onConfirmar) {
         try {
-          await onConfirmar(blob, { paginas: total, nombre });
+          await onConfirmar(blob, { paginas: total, nombre, datosBasicos });
         } catch (err) {
           setError("El documento se generó, pero no se pudo guardar en el expediente: " + err.message + " Use 'Descargar copia' para no perderlo.");
         }
@@ -266,6 +283,13 @@ export function CameraScannerModal({ open, onClose, pacienteId, onConfirmar, tit
         <div className="py-10 text-center">
           <RefreshCw size={28} className="animate-spin mx-auto" style={{ color: COLORS.navy }} />
           <p className="text-sm mt-3" style={{ color: "#666" }}>Escaneando: detectando bordes y corrigiendo perspectiva…</p>
+        </div>
+      )}
+
+      {estado === "extrayendo_datos" && (
+        <div className="py-10 text-center">
+          <RefreshCw size={28} className="animate-spin mx-auto" style={{ color: COLORS.navy }} />
+          <p className="text-sm mt-3" style={{ color: "#666" }}>Generando el PDF y leyendo los datos básicos del documento…</p>
         </div>
       )}
 
@@ -333,7 +357,7 @@ export function CameraScannerModal({ open, onClose, pacienteId, onConfirmar, tit
         <div className="mt-2">
           <Banner tone="success">
             PDF generado automáticamente: {pdfResultado.paginas} página{pdfResultado.paginas === 1 ? "" : "s"}, {tamanoLegibleMB(pdfResultado.blob.size)}.
-            {onConfirmar ? " El documento se guardó en el expediente del paciente." : " Descargue la copia local; aún no hay persistencia configurada."}
+            {onConfirmar ? ` ${mensajeExito}` : " Descargue la copia local; aún no hay persistencia configurada."}
           </Banner>
           <div className="flex gap-2 mt-3">
             <Button variant="secondary" onClick={() => descargarPdf(pdfResultado.blob, pdfResultado.nombre)}>

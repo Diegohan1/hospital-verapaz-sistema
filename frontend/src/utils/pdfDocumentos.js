@@ -61,7 +61,9 @@ export async function generarPdfDePaginas(paginas, { tamano = DOCUMENTO_CONFIG.T
 export function nombreDescarga(pacienteId) {
   const fecha = new Date().toISOString().slice(0, 10).replace(/-/g, "");
   const hora = new Date().toTimeString().slice(0, 5).replace(":", "");
-  return `documento-paciente-${pacienteId}-${fecha}${hora}.pdf`;
+  // Dev-Mari: al escanear antes de registrar al paciente, todavia no hay id.
+  const sujeto = pacienteId ? `paciente-${pacienteId}` : "paciente-nuevo";
+  return `documento-${sujeto}-${fecha}${hora}.pdf`;
 }
 
 export function tamanoLegibleMB(bytes) {
