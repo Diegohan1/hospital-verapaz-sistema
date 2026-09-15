@@ -3,8 +3,11 @@ import { Routes, Route, Navigate, useNavigate, useSearchParams } from "react-rou
 import { Layout } from "./components/Layout";
 import { useAuth } from "./context/AuthContext";
 import { LoginPage } from "./pages/LoginPage";
+import { RecuperarPasswordPage } from "./pages/RecuperarPasswordPage";
+import { CambiarPasswordPage } from "./pages/CambiarPasswordPage";
 import { RegistroPage } from "./pages/RegistroPage";
 import { ExpedientePage } from "./pages/ExpedientePage";
+import { AnexosPage } from "./pages/AnexosPage";
 import { TratamientoPage } from "./pages/TratamientoPage";
 import { ReferidosPage } from "./pages/ReferidosPage";
 import { FinancieraPage } from "./pages/FinancieraPage";
@@ -26,7 +29,17 @@ export default function App() {
   const { usuario, logout } = useAuth();
   const navigate = useNavigate();
 
-  if (!usuario) return <LoginPage />;
+  if (!usuario) {
+    // Sprint 2: flujo publico de recuperacion de contrasena, accesible sin
+    // sesion iniciada.
+    return (
+      <Routes>
+        <Route path="/recuperar" element={<RecuperarPasswordPage />} />
+        <Route path="/recuperar/cambiar" element={<CambiarPasswordPage />} />
+        <Route path="*" element={<LoginPage />} />
+      </Routes>
+    );
+  }
 
   function irAExpediente(pacienteId) {
     navigate(`/expediente?pacienteId=${pacienteId}`);
@@ -38,6 +51,7 @@ export default function App() {
         <Route path="/" element={<Navigate to="/registro" replace />} />
         <Route path="/registro" element={<RegistroPage onVerExpediente={irAExpediente} />} />
         <Route path="/expediente" element={<ConPacienteDeUrl Page={ExpedientePage} />} />
+        <Route path="/anexos" element={<ConPacienteDeUrl Page={AnexosPage} />} />
         <Route path="/tratamiento" element={<ConPacienteDeUrl Page={TratamientoPage} />} />
         <Route path="/referidos" element={<ReferidosPage />} />
         <Route path="/financiera" element={<FinancieraPage />} />

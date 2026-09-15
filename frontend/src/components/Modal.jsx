@@ -31,7 +31,7 @@ export function Modal({ open, onClose, title, icon: Icon, children, maxWidth = 4
         <div className="no-print flex items-start justify-between px-5 pt-5">
           <div className="flex items-center gap-2.5">
             {Icon && (
-              <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0" style={{ backgroundColor: "#E6F4EC" }}>
+              <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0" style={{ backgroundColor: "#E5F6EE" }}>
                 <Icon size={17} style={{ color: COLORS.navy }} />
               </div>
             )}

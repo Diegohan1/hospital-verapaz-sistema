@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Lock, Mail } from "lucide-react";
+import { Link } from "react-router-dom";
 import { Banner } from "../components/Banner";
 import { COLORS } from "../styles/tokens";
 import { useAuth } from "../context/AuthContext";
@@ -28,7 +29,7 @@ export function LoginPage() {
   return (
     <div
       className="min-h-screen flex items-center justify-center p-4 sm:p-6"
-      style={{ background: `linear-gradient(135deg, ${COLORS.lightBg} 0%, #E3F0E7 100%)` }}
+      style={{ background: `linear-gradient(135deg, ${COLORS.lightBg} 0%, #E5F6EE 100%)` }}
     >
       <div
         className="animate-fade-in-up w-full flex flex-col md:flex-row rounded-2xl overflow-hidden shadow-lifted bg-white"
@@ -58,11 +59,11 @@ export function LoginPage() {
             <h1 className="text-xl sm:text-2xl font-bold text-white mt-2 leading-snug">
               Sistema de gestión de expediente clínico y administrativo
             </h1>
-            <p className="text-sm mt-3" style={{ color: "#BFDDC9" }}>
+            <p className="text-sm mt-3" style={{ color: "#B7E4CC" }}>
               Cobán, Alta Verapaz — acceso exclusivo para personal autorizado.
             </p>
           </div>
-          <p className="relative text-xs mt-10 hidden md:block" style={{ color: "#6FA482" }}>
+          <p className="relative text-xs mt-10 hidden md:block" style={{ color: "#5FB98A" }}>
             Universidad Mariano Gálvez de Guatemala · Seminario de Tecnología de Información
           </p>
         </div>
@@ -89,7 +90,7 @@ export function LoginPage() {
                   onChange={(e) => setCorreo(e.target.value)}
                   placeholder="correo@hospitalverapaz.gt"
                   className="w-full pl-10 pr-3.5 py-2.5 rounded-xl text-sm border outline-none transition-all duration-150 focus:border-navy focus:ring-2 focus:shadow-soft"
-                  style={{ borderColor: COLORS.border, "--tw-ring-color": "rgba(15, 122, 61, 0.18)" }}
+                  style={{ borderColor: COLORS.border, "--tw-ring-color": "rgba(0, 134, 67, 0.18)" }}
                 />
               </div>
             </div>
@@ -105,7 +106,7 @@ export function LoginPage() {
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
                   className="w-full pl-10 pr-3.5 py-2.5 rounded-xl text-sm border outline-none transition-all duration-150 focus:border-navy focus:ring-2 focus:shadow-soft"
-                  style={{ borderColor: COLORS.border, "--tw-ring-color": "rgba(15, 122, 61, 0.18)" }}
+                  style={{ borderColor: COLORS.border, "--tw-ring-color": "rgba(0, 134, 67, 0.18)" }}
                 />
               </div>
             </div>
@@ -122,8 +123,10 @@ export function LoginPage() {
               />
               <span className="relative">{cargando ? "Ingresando…" : "Ingresar"}</span>
             </button>
-            <p className="text-center text-xs" style={{ color: COLORS.gold }}>
-              ¿Olvidó su contraseña? Contacte al Administrador
+            <p className="text-center text-xs mt-1">
+              <Link to="/recuperar" className="font-semibold" style={{ color: COLORS.gold }}>
+                ¿Olvidó su contraseña? Recuperarla
+              </Link>
             </p>
           </form>
         </div>

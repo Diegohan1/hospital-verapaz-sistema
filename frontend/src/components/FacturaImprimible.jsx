@@ -110,7 +110,7 @@ export function FacturaImprimible({ titulo, numero, fecha, paciente, lineas, tot
         {/* Total */}
         <div
           className="flex justify-between items-center rounded-lg px-4 py-3 mb-6"
-          style={{ backgroundColor: "#E6F4EC", border: `1px solid ${COLORS.navy}` }}
+          style={{ backgroundColor: "#E5F6EE", border: `1px solid ${COLORS.navy}` }}
         >
           <span className="text-sm font-bold uppercase tracking-wide" style={{ color: COLORS.navy }}>Total</span>
           <span className="text-xl font-extrabold" style={{ color: COLORS.navy }}>Q{Number(total).toFixed(2)}</span>

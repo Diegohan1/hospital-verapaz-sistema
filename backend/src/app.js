@@ -1,4 +1,5 @@
 import "dotenv/config";
+import "./config/env.js"; // valida variables criticas al arranque (falla rapido)
 import "express-async-errors"; // permite que los errores en controladores async lleguen al errorHandler
 import express from "express";
 import cors from "cors";
@@ -15,6 +16,7 @@ import farmaciaRoutes from "./routes/farmacia.routes.js";
 import bitacoraRoutes from "./routes/bitacora.routes.js";
 import reportesRoutes from "./routes/reportes.routes.js";
 import cie10Routes from "./routes/cie10.routes.js";
+import { prisma } from "./config/prisma.js";
 
 const app = express();
 
@@ -35,13 +37,26 @@ app.use("/api/bitacora", bitacoraRoutes);       // Modulo 7 - Bitacora de Visita
 app.use("/api/reportes", reportesRoutes);       // Modulo 9 - Reportes
 app.use("/api/cie10", cie10Routes);             // Catalogo de codigos CIE-10
 
-app.get("/api/health", (req, res) => res.json({ status: "ok" }));
+// Sprint 8: healthcheck con verificacion de la base de datos, para que el
+// orchestrator (docker compose) y el smoke test post-despliegue detecten
+// tanto caida de la API como perdida de conexion con PostgreSQL.
+app.get("/api/health", async (req, res) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    res.json({ status: "ok", db: "ok" });
+  } catch {
+    res.status(503).json({ status: "degraded", db: "error" });
+  }
+});
 
 // Manejador de errores centralizado (captura errores lanzados por los
 // controladores async gracias a express-async-errors)
 app.use((err, req, res, next) => {
   if (err.code === "P2002") {
     return res.status(409).json({ error: "Ya existe un registro con ese valor único" });
+  }
+  if (err.code === "LIMIT_FILE_SIZE") {
+    return res.status(422).json({ error: "El archivo excede el tamaño máximo permitido" });
   }
   console.error(err);
   res.status(err.status || 500).json({ error: err.message || "Error interno del servidor" });

@@ -30,6 +30,11 @@ model Usuario {
   passwordHash          String
   roles                 String[] @default([]) // uno o mas de: Administrador, Recepcion, Consulta, Enfermeria, Facturacion, Farmacia (RF-30)
   puedeAutogenerarToken Boolean  @default(false) // RF-34
+  // Sprint 1: catalogo de medicos. Un usuario con rol clinico puede tener
+  // numero de colegiado y especialidad, que se autocompletan al seleccionarlo
+  // como medico responsable de una receta.
+  colegiado         String? // numero de colegiado activo
+  especialidad      String?
   ultimaActividad       DateTime? // se actualiza en cada peticion autenticada, para saber quien esta "en linea"
   creadoEn              DateTime @default(now())
 
@@ -41,6 +46,26 @@ model Usuario {
   facturasFarmacia FacturaFarmacia[] @relation("FacturaFarmaciaRegistradoPor")
   accesosDiagnostico AccesoDiagnostico[] @relation("AccesoDiagnosticoUsuario")
   logs             LogActividad[]  @relation("LogActividadUsuario")
+  passwordResetTokens PasswordResetToken[]
+  documentosRegistrados DocumentoPaciente[] @relation("DocumentoRegistradoPor")
+}
+
+// Sprint 2: tokens de recuperacion de contrasena. Se guarda el hash SHA-256
+// del token (nunca el token en claro) con expiracion de 30 minutos y uso
+// unico. La respuesta de "forgot-password" es anti-enumeracion: no revela
+// si el correo existe o no.
+model PasswordResetToken {
+  id        Int       @id @default(autoincrement())
+  usuarioId Int
+  tokenHash String    @unique
+  expiraEn  DateTime
+  usado     Boolean   @default(false)
+  creadoEn  DateTime  @default(now())
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id])
+
+  @@index([usuarioId])
+  @@index([expiraEn])
 }
 
 // Bitacora general del sistema: login/logout y cada accion de crear o
@@ -103,6 +128,10 @@ model Paciente {
   contactoEmergencia String? // nombre de la persona a contactar
   telefonoEmergencia String? // telefono de esa misma persona
   parentesco         String?
+  // Sprint 1: encargado legal o administrativo del paciente, separado del
+  // contacto de emergencia (pueden ser personas distintas).
+  encargadoNombre    String?
+  encargadoTelefono  String?
 
   // RF-05: ingreso
   referidoDe         String? // institucion o medico, texto libre
@@ -124,6 +153,9 @@ model Paciente {
 
   medicoReferente    MedicoReferente?     @relation(fields: [medicoReferenteId], references: [id])
   maternidad         RegistroMaternidad?
+  egresoClinico      EgresoClinico?
+  anexos             AnexoPaciente[]
+  documentos         DocumentoPaciente[]
   diagnosticos       Diagnostico[]
   tratamientos       TratamientoItem[]
   recetas            Receta[]
@@ -134,6 +166,72 @@ model Paciente {
   facturasFarmacia   FacturaFarmacia[]
 
   @@index([nombreCompleto])
+  @@index([fechaIngreso])
+  @@index([fechaEgreso])
+}
+
+// Sprint 1: datos clinicos de egreso (RF-06/RF-08) separados de los datos
+// administrativos del Paciente y cifrados con AES-256-GCM. El payload
+// cifrado contiene: diagnostico de egreso (codigo y texto), complicaciones,
+// operaciones, autopsia y causa de muerte. Solo fechaEgreso y
+// condicionEgreso (administrativos, no sensibles) permanecen en Paciente.
+// Las columnas de texto plano legacy se mantienen temporalmente hasta
+// validar la migracion historica (ver scripts/migrar-egreso-cifrado.js).
+model EgresoClinico {
+  id           Int      @id @default(autoincrement())
+  pacienteId   Int      @unique // relacion uno a uno con Paciente
+  textoCifrado String   // payload JSON cifrado (AES-256-GCM)
+  iv           String
+  authTag      String
+  creadoEn     DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  paciente Paciente @relation(fields: [pacienteId], references: [id])
+}
+
+// Sprint 1: repositorio general de anexos y expedientes escaneados a nivel
+// de paciente, independiente de los adjuntos de estudios del diagnostico.
+// El contenido binario vive cifrado en el volumen de uploads; esta fila
+// solo guarda metadatos no sensibles (el nombre interno es aleatorio).
+model AnexoPaciente {
+  id             Int      @id @default(autoincrement())
+  pacienteId     Int
+  nombreOriginal String
+  nombreArchivo  String   // nombre interno aleatorio generado por el servidor
+  mimeType       String
+  tamano         Int
+  creadoEn       DateTime @default(now())
+
+  paciente Paciente @relation(fields: [pacienteId], references: [id])
+
+  @@index([pacienteId])
+}
+
+// Cambios2 Sprint 5: documentos del paciente generados por el escaner de
+// camara (PDF de una o varias paginas procesadas). El binario se almacena
+// cifrado (AES-256-GCM) en el volumen de documentos; esta fila guarda
+// metadatos no sensibles, checksum de integridad y auditoria de creacion.
+// La eliminacion es logica (eliminadoEn) segun politica de retencion.
+model DocumentoPaciente {
+  id             Int       @id @default(autoincrement())
+  pacienteId     Int
+  nombreOriginal String
+  nombreArchivo  String    // nombre interno aleatorio generado por el servidor
+  mimeType       String
+  tamano         Int
+  checksum       String    // SHA-256 del binario original para integridad
+  paginas        Int       @default(1)
+  tipoDocumental String?   // ej. "identificacion", "expediente", "constancia"
+  registradoPor  Int
+  creadoEn       DateTime  @default(now())
+  eliminadoEn    DateTime?
+
+  paciente     Paciente @relation(fields: [pacienteId], references: [id])
+  registrador  Usuario  @relation("DocumentoRegistradoPor", fields: [registradoPor], references: [id])
+
+  @@index([pacienteId])
+  @@index([creadoEn])
+  @@index([tipoDocumental])
 }
 
 // RF-07: seccion de maternidad (cuando aplica)
@@ -324,6 +422,7 @@ model MovimientoInventario {
   medicamento MedicamentoInventario @relation(fields: [medicamentoId], references: [id])
 
   @@index([medicamentoId])
+  @@index([fecha])
 }
 
 // Linea de detalle de una venta directa de farmacia (un medicamento dentro

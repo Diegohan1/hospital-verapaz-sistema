@@ -2,35 +2,38 @@
 // Acceso protegido por el middleware requireTempToken (RF-11, RF-33, RF-34):
 // solo el Administrador o un usuario con token de acceso temporal vigente
 // puede ver o modificar el contenido de este controlador.
+//
+// Sprint 4: los archivos adjuntos de estudios ya no se guardan en claro:
+// Multer los recibe en memoria (con limite de tamano), la aplicacion los
+// cifra con AES-256-GCM y persiste un sobre cifrado en el volumen. Los
+// archivos historicos en claro siguen siendo legibles (fallback) y se
+// recifran con scripts/recifrar-archivos.js.
 import fs from "node:fs";
 import path from "node:path";
 import multer from "multer";
 import { prisma } from "../config/prisma.js";
-import { encrypt, decrypt } from "../utils/crypto.util.js";
+import { encrypt, decrypt, leerArchivoCifrado } from "../utils/crypto.util.js";
+import { ENCRYPTION_KEY, UPLOAD_MAX_MB_ESTUDIOS } from "../config/env.js";
 import { ROLES } from "../utils/roles.util.js";
+import { validarArchivo, guardarArchivoCifrado } from "../utils/archivos.util.js";
 
-const KEY = process.env.ENCRYPTION_KEY;
+const KEY = ENCRYPTION_KEY;
 
-// Los archivos de "Estudios y resultados" se guardan en disco (no en la
-// base de datos) para no inflar las filas de Diagnostico; solo el nombre
-// generado y el pacienteId dueño quedan en DiagnosticoArchivo, para poder
-// validar el acceso con el mismo token temporal que protege el diagnostico.
+// Los archivos de "Estudios y resultados" se guardan cifrados en disco (no
+// en la base de datos) para no inflar las filas de Diagnostico; solo el
+// nombre interno aleatorio y el pacienteId dueno quedan en
+// DiagnosticoArchivo, para poder validar el acceso con el mismo token
+// temporal que protege el diagnostico (RF-11).
 const UPLOAD_DIR = path.join(process.cwd(), "uploads", "diagnosticos");
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
-const storage = multer.diskStorage({
-  destination: UPLOAD_DIR,
-  filename: (req, file, cb) => {
-    const nombre = `${Date.now()}-${Math.round(Math.random() * 1e9)}${path.extname(file.originalname)}`;
-    cb(null, nombre);
-  },
-});
-
-// RF-10 ampliado: adjuntar resultados de laboratorio/gabinete a un estudio.
-// Limite de 5MB por archivo para poder incluirlos como data URI en la misma
-// respuesta cifrada, sin necesitar un endpoint de descarga separado (que
-// obligaria a gastar un segundo token de acceso, RNF-12).
-export const uploadEstudios = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } }).any();
+// Sprint 4: almacenamiento en memoria controlado — el archivo nunca toca
+// disco en claro; se cifra antes de persistirlo. Limite configurable
+// (UPLOAD_MAX_MB_ESTUDIOS, 5 MB por defecto).
+export const uploadEstudios = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: UPLOAD_MAX_MB_ESTUDIOS * 1024 * 1024 },
+}).any();
 
 // Lista solo metadatos (sin el contenido del diagnostico) para saber si
 // un paciente ya tiene expediente registrado, sin exponer datos sensibles.
@@ -43,9 +46,10 @@ export async function listar(req, res) {
   res.json(diagnosticos);
 }
 
-// Adjunta cada archivo de datos.estudios como data URI (base64) leido de
-// disco, para que el frontend lo pueda mostrar/descargar sin un endpoint
-// aparte — todo llega en la misma respuesta ya protegida por el token.
+// Adjunta cada archivo de datos.estudios como data URI (base64) leido del
+// volumen (descifrado en memoria), para que el frontend lo pueda mostrar o
+// descargar sin un endpoint aparte — todo llega en la misma respuesta ya
+// protegida por el token.
 async function inlineArchivosEstudios(datos, pacienteId) {
   if (!datos?.estudios?.length) return;
   for (const estudio of datos.estudios) {
@@ -53,7 +57,7 @@ async function inlineArchivosEstudios(datos, pacienteId) {
     const archivo = await prisma.diagnosticoArchivo.findUnique({ where: { id: estudio.archivoId } });
     if (!archivo || archivo.pacienteId !== pacienteId) continue;
     try {
-      const buffer = fs.readFileSync(path.join(UPLOAD_DIR, archivo.nombreArchivo));
+      const buffer = leerArchivoCifrado(path.join(UPLOAD_DIR, archivo.nombreArchivo), KEY);
       estudio.archivoDataUrl = `data:${archivo.mimeType};base64,${buffer.toString("base64")}`;
       estudio.archivoNombre = archivo.nombreOriginal;
     } catch {
@@ -142,15 +146,23 @@ export async function crear(req, res) {
     return res.status(400).json({ error: "pacienteId y datos son requeridos" });
   }
 
+  // Sprint 4: validar tipos permitidos antes de persistir nada
+  for (const file of req.files || []) {
+    const error = validarArchivo(file);
+    if (error) return res.status(422).json({ error });
+  }
+
   for (const file of req.files || []) {
     const match = file.fieldname.match(/^estudio_(\d+)$/);
     const indice = match ? Number(match[1]) : null;
     if (indice == null || !datos.estudios?.[indice]) continue;
+    // Cifrar y persistir el sobre; guardar solo metadatos en la base
+    const nombreArchivo = guardarArchivoCifrado(file.buffer, UPLOAD_DIR, KEY);
     const archivo = await prisma.diagnosticoArchivo.create({
       data: {
         pacienteId,
         nombreOriginal: file.originalname,
-        nombreArchivo: file.filename,
+        nombreArchivo,
         mimeType: file.mimetype,
         tamano: file.size,
       },

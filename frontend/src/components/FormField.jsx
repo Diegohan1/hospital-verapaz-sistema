@@ -16,7 +16,7 @@ const baseClass =
 const baseStyle = { borderColor: COLORS.border, color: COLORS.text };
 
 // El focus ring usa el verde del hospital via CSS var, para no depender del theme de Tailwind
-const focusVars = { "--tw-ring-color": "rgba(15, 122, 61, 0.18)" };
+const focusVars = { "--tw-ring-color": "rgba(0, 134, 67, 0.18)" };
 
 export function TextInput(props) {
   return (

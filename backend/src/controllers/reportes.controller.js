@@ -110,6 +110,40 @@ export async function inventarioKardex(req, res) {
   res.json(movimientos);
 }
 
+// Sprint 7: consulta administrativa de la bitacora general (LogActividad):
+// quien hizo que y cuando, con filtros por usuario, accion y rango de
+// fechas. Queda separada de la auditoria de accesos al diagnostico
+// (auditoriaDiagnostico, RNF-08).
+export async function actividad(req, res) {
+  const { usuarioId, accion, desde, hasta, buscar } = req.query;
+  const where = {
+    usuarioId: usuarioId ? Number(usuarioId) : undefined,
+    accion: accion || undefined,
+    fecha: rangoFecha(desde, hasta),
+    ...(buscar
+      ? {
+          OR: [
+            { usuario: { nombre: { contains: buscar, mode: "insensitive" } } },
+            { detalle: { contains: buscar, mode: "insensitive" } },
+          ],
+        }
+      : {}),
+  };
+  const include = { usuario: { select: { nombre: true, roles: true } } };
+
+  if (req.query.page) {
+    const { page, pageSize, skip, take } = leerPaginacion(req);
+    const [items, total] = await Promise.all([
+      prisma.logActividad.findMany({ where, orderBy: { fecha: "desc" }, skip, take, include }),
+      prisma.logActividad.count({ where }),
+    ]);
+    return res.json({ items, total, page, pageSize });
+  }
+
+  const logs = await prisma.logActividad.findMany({ where, orderBy: { fecha: "desc" }, take: 100, include });
+  res.json(logs);
+}
+
 // RNF-08: quien vio el diagnostico confidencial de cada paciente y cuando.
 // "buscar" filtra por nombre de usuario o del paciente/historia clinica,
 // para no tener que revisar registro por registro si hay mucho volumen.

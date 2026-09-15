@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
-  ClipboardList, FileText, Syringe, Users, Wallet, Pill,
+  ClipboardList, FileText, FolderOpen, Syringe, Users, Wallet, Pill,
   ClipboardCheck, ShieldCheck, BarChart3, LogOut, Menu, X,
 } from "lucide-react";
 import { COLORS } from "../styles/tokens";
@@ -11,6 +11,7 @@ import logoVerapaz from "../assets/logo-verapaz.png";
 const NAV_ITEMS = [
   { key: "registro", label: "Registro y Admisión", Icon: ClipboardList },
   { key: "expediente", label: "Expediente Clínico", Icon: FileText },
+  { key: "anexos", label: "Anexos y Escaneados", Icon: FolderOpen },
   { key: "tratamiento", label: "Tratamiento", Icon: Syringe },
   { key: "referidos", label: "Clientes Referidos", Icon: Users },
   { key: "financiera", label: "Área Financiera", Icon: Wallet },
@@ -47,7 +48,7 @@ function SidebarContent({ usuario, onLogout, onNavigate }) {
           </div>
           <div className="min-w-0">
             <div className="text-sm font-semibold text-white truncate">{usuario.nombre}</div>
-            <div className="text-xs truncate" style={{ color: "#A9C9B4" }}>{etiquetasRoles(usuario.roles)}</div>
+            <div className="text-xs truncate" style={{ color: "#A5D8BD" }}>{etiquetasRoles(usuario.roles)}</div>
           </div>
         </div>
       </div>
@@ -63,7 +64,7 @@ function SidebarContent({ usuario, onLogout, onNavigate }) {
               style={
                 activo
                   ? { backgroundColor: COLORS.gold, color: COLORS.navy, fontWeight: 600 }
-                  : { color: "#DCEAE0", backgroundColor: "transparent" }
+                  : { color: "#D8F0E2", backgroundColor: "transparent" }
               }
               onMouseEnter={(e) => { if (!activo) e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.06)"; }}
               onMouseLeave={(e) => { if (!activo) e.currentTarget.style.backgroundColor = "transparent"; }}
@@ -78,7 +79,7 @@ function SidebarContent({ usuario, onLogout, onNavigate }) {
         <button
           onClick={onLogout}
           className="w-full flex items-center gap-3 text-left px-3 py-2.5 rounded-xl text-sm transition-colors duration-150 hover:bg-white/5"
-          style={{ color: "#A9C9B4" }}
+          style={{ color: "#A5D8BD" }}
         >
           <LogOut size={17} className="shrink-0" />
           Cerrar sesión

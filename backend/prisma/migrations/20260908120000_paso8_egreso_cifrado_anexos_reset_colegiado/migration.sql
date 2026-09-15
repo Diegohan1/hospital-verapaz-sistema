@@ -1,0 +1,60 @@
+-- AlterTable
+ALTER TABLE "Usuario" ADD COLUMN "colegiado" TEXT,
+ADD COLUMN "especialidad" TEXT;
+
+-- AlterTable
+ALTER TABLE "Paciente" ADD COLUMN "encargadoNombre" TEXT,
+ADD COLUMN "encargadoTelefono" TEXT;
+
+-- CreateTable
+CREATE TABLE "PasswordResetToken" (
+    "id" SERIAL NOT NULL,
+    "usuarioId" INTEGER NOT NULL,
+    "tokenHash" TEXT NOT NULL,
+    "expiraEn" TIMESTAMP(3) NOT NULL,
+    "usado" BOOLEAN NOT NULL DEFAULT false,
+    "creadoEn" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "PasswordResetToken_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "EgresoClinico" (
+    "id" SERIAL NOT NULL,
+    "pacienteId" INTEGER NOT NULL,
+    "textoCifrado" TEXT NOT NULL,
+    "iv" TEXT NOT NULL,
+    "authTag" TEXT NOT NULL,
+    "creadoEn" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "actualizadoEn" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "EgresoClinico_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "AnexoPaciente" (
+    "id" SERIAL NOT NULL,
+    "pacienteId" INTEGER NOT NULL,
+    "nombreOriginal" TEXT NOT NULL,
+    "nombreArchivo" TEXT NOT NULL,
+    "mimeType" TEXT NOT NULL,
+    "tamano" INTEGER NOT NULL,
+    "creadoEn" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "AnexoPaciente_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateIndex
+CREATE UNIQUE INDEX "PasswordResetToken_tokenHash_key" ON "PasswordResetToken"("tokenHash");
+CREATE INDEX "PasswordResetToken_usuarioId_idx" ON "PasswordResetToken"("usuarioId");
+CREATE INDEX "PasswordResetToken_expiraEn_idx" ON "PasswordResetToken"("expiraEn");
+CREATE UNIQUE INDEX "EgresoClinico_pacienteId_key" ON "EgresoClinico"("pacienteId");
+CREATE INDEX "AnexoPaciente_pacienteId_idx" ON "AnexoPaciente"("pacienteId");
+CREATE INDEX "Paciente_fechaIngreso_idx" ON "Paciente"("fechaIngreso");
+CREATE INDEX "Paciente_fechaEgreso_idx" ON "Paciente"("fechaEgreso");
+CREATE INDEX "MovimientoInventario_fecha_idx" ON "MovimientoInventario"("fecha");
+
+-- AddForeignKey
+ALTER TABLE "PasswordResetToken" ADD CONSTRAINT "PasswordResetToken_usuarioId_fkey" FOREIGN KEY ("usuarioId") REFERENCES "Usuario"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "EgresoClinico" ADD CONSTRAINT "EgresoClinico_pacienteId_fkey" FOREIGN KEY ("pacienteId") REFERENCES "Paciente"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "AnexoPaciente" ADD CONSTRAINT "AnexoPaciente_pacienteId_fkey" FOREIGN KEY ("pacienteId") REFERENCES "Paciente"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
