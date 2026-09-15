@@ -54,11 +54,16 @@ function tomarCampos(body) {
   return data;
 }
 
-// Sprint 3: validacion de entradas obligatorias y formatos
-function validarPaciente(body) {
+// Sprint 3: validacion de entradas obligatorias y formatos.
+// exigirDpi=false (edicion): el DPI no es obligatorio reenviarlo, pero si
+// viene en el body igual se le exige el formato de 13 digitos — antes se
+// omitia la validacion completa (dejaba guardar un DPI invalido).
+function validarPaciente(body, { exigirDpi = true } = {}) {
   if (!body.nombreCompleto?.trim()) return "nombreCompleto es requerido";
-  if (!body.dpi?.trim()) return "dpi es requerido";
-  if (!/^\d{13}$/.test(String(body.dpi).trim())) return "El DPI debe tener 13 dígitos";
+  if (exigirDpi && !body.dpi?.trim()) return "dpi es requerido";
+  if (body.dpi != null && body.dpi !== "" && !/^\d{13}$/.test(String(body.dpi).trim())) {
+    return "El DPI debe tener 13 dígitos";
+  }
   if (body.telefono != null && body.telefono !== "" && !/^\d{8}$/.test(String(body.telefono).trim())) {
     return "El teléfono debe tener 8 dígitos";
   }
@@ -252,7 +257,7 @@ export async function crear(req, res) {
 export async function actualizar(req, res) {
   const id = Number(req.params.id);
 
-  const errorValidacion = validarPaciente({ ...req.body, dpi: undefined });
+  const errorValidacion = validarPaciente(req.body, { exigirDpi: false });
   if (errorValidacion) return res.status(400).json({ error: errorValidacion });
 
   try {
@@ -302,6 +307,7 @@ export async function actualizar(req, res) {
     res.json(paciente);
   } catch (err) {
     if (err.code === "P2025") return res.status(404).json({ error: "Paciente no encontrado" });
+    if (err.code === "P2002") return res.status(409).json({ error: "Ya existe un paciente con este DPI" });
     if (err.status) return res.status(err.status).json({ error: err.message });
     throw err;
   }

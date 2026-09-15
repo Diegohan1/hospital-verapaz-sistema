@@ -21,6 +21,11 @@ router.post("/paciente/:id", controller.uploadEstudios, requireTempToken, contro
 // Sprint 4: anexos y expedientes escaneados a nivel de paciente
 router.get("/anexos/paciente/:id", requireTempToken, anexos.listarAnexos);
 router.post("/anexos/paciente/:id", anexos.uploadAnexos, requireTempToken, anexos.subirAnexos);
-router.get("/anexos/:id/descargar", requireTempToken, anexos.descargarAnexo);
+// El parametro se llama anexoId (no "id") a proposito: requireTempToken
+// compara req.params.id contra el pacienteId del token, y aqui el recurso
+// de la ruta es el anexo, no el paciente. Con otro nombre de parametro el
+// middleware no intenta ese cotejo y se deja la verificacion (correcta) que
+// ya hace el propio controlador comparando anexo.pacienteId.
+router.get("/anexos/:anexoId/descargar", requireTempToken, anexos.descargarAnexo);
 
 export default router;

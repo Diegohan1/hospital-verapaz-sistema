@@ -84,7 +84,7 @@ export async function subirAnexos(req, res) {
 // Descarga/visualizacion de un anexo: siempre a traves de esta API (con
 // token temporal o Administrador); el volumen nunca se sirve estaticamente.
 export async function descargarAnexo(req, res) {
-  const anexo = await prisma.anexoPaciente.findUnique({ where: { id: Number(req.params.id) } });
+  const anexo = await prisma.anexoPaciente.findUnique({ where: { id: Number(req.params.anexoId) } });
   if (!anexo) return res.status(404).json({ error: "Anexo no encontrado" });
 
   // El token temporal puede estar acotado a un paciente: verificar que el
