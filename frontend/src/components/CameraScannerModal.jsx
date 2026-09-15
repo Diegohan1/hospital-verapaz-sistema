@@ -5,7 +5,7 @@ import { Button } from "./Button";
 import { Banner } from "./Banner";
 import { COLORS } from "../styles/tokens";
 import { procesarEscaneoAutomatico } from "../utils/scanProcessing";
-import { generarPdfDePaginas, validarPdf, descargarPdf, nombreDescarga, tamanoLegibleMB } from "../utils/pdfDocumentos";
+import { generarPdfDePaginas, validarPdf, descargarPdf, nombreDescarga, tamanoLegibleMB, renderizarPrimeraPaginaPdf } from "../utils/pdfDocumentos";
 import { extraerDatosBasicos } from "../utils/ocrDatosBasicos";
 
 // Escaner documental automatico (Cambios2): como un escaner de impresion —
@@ -33,11 +33,15 @@ function dataUrlDesdeVideo(video, maxWidth) {
   return canvas.toDataURL("image/jpeg", 0.95);
 }
 
+function esPdf(file) {
+  return file?.type === "application/pdf" || /\.pdf$/i.test(file?.name || "");
+}
+
 function archivoValido(file) {
   if (!file || file.size <= 0) return "El archivo está vacío o corrupto.";
   if (file.size > SCAN_CONFIG.MB_MAX_ENTRADA * 1024 * 1024) return `La imagen excede el máximo de ${SCAN_CONFIG.MB_MAX_ENTRADA} MB.`;
   if (!SCAN_CONFIG.TIPOS_ENTRADA.includes(file.type) && !/\.(jpe?g|png|heic)$/i.test(file.name)) {
-    return "Formato no permitido: use JPG, PNG o HEIC.";
+    return "Formato no permitido: use JPG, PNG, HEIC o PDF.";
   }
   return null;
 }
@@ -185,10 +189,43 @@ export function CameraScannerModal({
     escanearAutomaticamente(dataUrlDesdeVideo(videoRef.current, SCAN_CONFIG.CAMERA_MAX_WIDTH));
   }
 
+  // Dev-Mari: un PDF ya viene de un escaner fisico (impresora) — no es una
+  // foto que haya que enderezar. Se usa tal cual, sin pasar por deteccion de
+  // bordes ni correccion de perspectiva, y se va directo a leer los datos
+  // basicos y confirmar.
+  async function manejarArchivoPdf(file) {
+    setError(null);
+    setAviso(null);
+    setEstado("extrayendo_datos");
+    try {
+      const bytes = await file.arrayBuffer();
+      const { dataUrl, totalPaginas } = await renderizarPrimeraPaginaPdf(bytes);
+      const datosBasicos = await extraerDatosBasicos([dataUrl]);
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      const nombre = nombreDescarga(pacienteId);
+      setPdfResultado({ blob, paginas: totalPaginas, nombre });
+      setEstado("confirmado");
+      if (onConfirmar) {
+        try {
+          await onConfirmar(blob, { paginas: totalPaginas, nombre, datosBasicos });
+        } catch (err) {
+          setError("El documento se generó, pero no se pudo guardar: " + err.message + " Use 'Descargar copia' para no perderlo.");
+        }
+      }
+    } catch (err) {
+      setError("No se pudo leer el PDF (¿está dañado o protegido con contraseña?): " + err.message);
+      setEstado("error");
+    }
+  }
+
   async function manejarArchivo(evento) {
     const file = evento.target.files?.[0];
     evento.target.value = "";
     if (!file) return;
+    if (esPdf(file)) {
+      await manejarArchivoPdf(file);
+      return;
+    }
     const invalido = archivoValido(file);
     if (invalido) {
       setError(invalido);
@@ -308,9 +345,9 @@ export function CameraScannerModal({
             )
           )}
           <Button variant="secondary" onClick={() => inputRef.current?.click()}>
-            <span className="flex items-center gap-1.5"><ImagePlus size={15} /> Subir imagen</span>
+            <span className="flex items-center gap-1.5"><ImagePlus size={15} /> Subir imagen o PDF del escáner</span>
           </Button>
-          <input ref={inputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={manejarArchivo} aria-label="Subir imagen del documento" />
+          <input ref={inputRef} type="file" accept="image/*,.pdf,application/pdf" capture="environment" className="hidden" onChange={manejarArchivo} aria-label="Subir imagen o PDF del documento" />
           {estado === "capturando" && (
             <Button variant="secondary" onClick={detenerCamara}>
               <span className="flex items-center gap-1.5"><X size={15} /> Detener cámara</span>
