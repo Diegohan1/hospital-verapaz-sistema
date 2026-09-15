@@ -17,6 +17,15 @@ const POLL_MS = 2500;
 // OCR de datos basicos y entrega el resultado con la misma forma que
 // CameraScannerModal (blob + {paginas, nombre, datosBasicos}), para que el
 // llamador use un unico manejador sin importar de donde vino el escaneo.
+// Un QR con "localhost" en la URL no sirve: para el telefono, "localhost"
+// es el telefono mismo, no la computadora. Si la PC abrio la app asi (en
+// vez de por su direccion de red), no hay forma de armar un enlace valido
+// desde el navegador (no puede saber su propia IP de LAN) — hay que avisar
+// en vez de generar un QR que nunca va a funcionar.
+function origenSirveParaQR() {
+  return !["localhost", "127.0.0.1"].includes(window.location.hostname);
+}
+
 export function EscaneoQRModal({ open, onClose, onConfirmar }) {
   const [sesionId, setSesionId] = useState(null);
   const [qrDataUrl, setQrDataUrl] = useState(null);
@@ -27,7 +36,7 @@ export function EscaneoQRModal({ open, onClose, onConfirmar }) {
   const urlSesion = sesionId ? `${window.location.origin}/escaneo-movil/${sesionId}` : null;
 
   useEffect(() => {
-    if (open) iniciar();
+    if (open && origenSirveParaQR()) iniciar();
     else limpiar();
     return limpiar;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -92,21 +101,31 @@ export function EscaneoQRModal({ open, onClose, onConfirmar }) {
     <Modal open={open} onClose={cancelar} title="Escanear con el teléfono" maxWidth={420}>
       {error && <Banner tone="error">{error}</Banner>}
 
-      {estado === "creando" && <p className="text-sm text-center py-8" style={{ color: "#666" }}>Generando código…</p>}
+      {!origenSirveParaQR() ? (
+        <Banner tone="error">
+          Esta pantalla se abrió como "localhost", y esa dirección no sirve para el teléfono (para él, "localhost" es
+          él mismo). Cierre esta ventana y vuelva a abrir el sistema usando la dirección de red de esta computadora,
+          por ejemplo <strong>http://192.168.0.104:5173</strong>, y ahí sí genere el código QR.
+        </Banner>
+      ) : (
+        <>
+          {estado === "creando" && <p className="text-sm text-center py-8" style={{ color: "#666" }}>Generando código…</p>}
 
-      {(estado === "esperando" || estado === "recibiendo") && qrDataUrl && (
-        <div className="flex flex-col items-center gap-3 py-2">
-          <img src={qrDataUrl} alt="Código QR para escanear con el teléfono" width={220} height={220} />
-          <p className="text-sm text-center" style={{ color: "#666" }}>
-            Abra la cámara del teléfono y apunte a este código — debe estar conectado a la misma red WiFi.
-          </p>
-          <a href={urlSesion} className="text-xs break-all" style={{ color: COLORS.navy }}>{urlSesion}</a>
-          {estado === "recibiendo" ? (
-            <p className="text-sm font-semibold mt-2" style={{ color: COLORS.navy }}>Recibiendo el documento…</p>
-          ) : (
-            <p className="text-xs mt-2" style={{ color: "#999" }}>Esperando a que se complete el escaneo desde el teléfono… (vence en 10 min)</p>
+          {(estado === "esperando" || estado === "recibiendo") && qrDataUrl && (
+            <div className="flex flex-col items-center gap-3 py-2">
+              <img src={qrDataUrl} alt="Código QR para escanear con el teléfono" width={220} height={220} />
+              <p className="text-sm text-center" style={{ color: "#666" }}>
+                Abra la cámara del teléfono y apunte a este código — debe estar conectado a la misma red WiFi.
+              </p>
+              <a href={urlSesion} className="text-xs break-all" style={{ color: COLORS.navy }}>{urlSesion}</a>
+              {estado === "recibiendo" ? (
+                <p className="text-sm font-semibold mt-2" style={{ color: COLORS.navy }}>Recibiendo el documento…</p>
+              ) : (
+                <p className="text-xs mt-2" style={{ color: "#999" }}>Esperando a que se complete el escaneo desde el teléfono… (vence en 10 min)</p>
+              )}
+            </div>
           )}
-        </div>
+        </>
       )}
 
       <div className="mt-4">
