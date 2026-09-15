@@ -15,6 +15,7 @@ import { FarmaciaPage } from "./pages/FarmaciaPage";
 import { BitacoraPage } from "./pages/BitacoraPage";
 import { SeguridadPage } from "./pages/SeguridadPage";
 import { ReportesPage } from "./pages/ReportesPage";
+import { EscaneoMovilPage } from "./pages/EscaneoMovilPage";
 
 // Estas tres paginas reciben un paciente preseleccionado (ej. desde "Ver
 // expediente" en Registro) via ?pacienteId= en la URL, en vez de estado en
@@ -31,11 +32,13 @@ export default function App() {
 
   if (!usuario) {
     // Sprint 2: flujo publico de recuperacion de contrasena, accesible sin
-    // sesion iniciada.
+    // sesion iniciada. Dev-Mari: /escaneo-movil/:sesionId tambien es
+    // publica — la abre el navegador del telefono al leer el QR, sin login.
     return (
       <Routes>
         <Route path="/recuperar" element={<RecuperarPasswordPage />} />
         <Route path="/recuperar/cambiar" element={<CambiarPasswordPage />} />
+        <Route path="/escaneo-movil/:sesionId" element={<EscaneoMovilPage />} />
         <Route path="*" element={<LoginPage />} />
       </Routes>
     );

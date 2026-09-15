@@ -16,6 +16,7 @@ import farmaciaRoutes from "./routes/farmacia.routes.js";
 import bitacoraRoutes from "./routes/bitacora.routes.js";
 import reportesRoutes from "./routes/reportes.routes.js";
 import cie10Routes from "./routes/cie10.routes.js";
+import escaneoMovilRoutes from "./routes/escaneoMovil.routes.js";
 import { prisma } from "./config/prisma.js";
 
 const app = express();
@@ -36,6 +37,7 @@ app.use("/api/farmacia", farmaciaRoutes);       // Modulo 6 - Farmacia
 app.use("/api/bitacora", bitacoraRoutes);       // Modulo 7 - Bitacora de Visitas
 app.use("/api/reportes", reportesRoutes);       // Modulo 9 - Reportes
 app.use("/api/cie10", cie10Routes);             // Catalogo de codigos CIE-10
+app.use("/api/escaneo-movil", escaneoMovilRoutes); // Dev-Mari: vinculacion por QR con la camara del telefono
 
 // Sprint 8: healthcheck con verificacion de la base de datos, para que el
 // orchestrator (docker compose) y el smoke test post-despliegue detecten

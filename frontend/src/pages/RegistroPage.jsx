@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Printer, Camera, FileText, Download, Trash2 } from "lucide-react";
+import { Printer, Camera, FileText, Download, Trash2, Smartphone } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
 import { Card } from "../components/Card";
 import { Table } from "../components/Table";
@@ -8,6 +8,7 @@ import { Banner } from "../components/Banner";
 import { Modal } from "../components/Modal";
 import { FichaPacienteImprimible } from "../components/FichaPacienteImprimible";
 import { CameraScannerModal } from "../components/CameraScannerModal";
+import { EscaneoQRModal } from "../components/EscaneoQRModal";
 import { PacienteBuscador } from "../components/PacienteBuscador";
 import { FormField, TextInput, Select, TextArea } from "../components/FormField";
 import { Combobox } from "../components/Combobox";
@@ -89,6 +90,7 @@ export function RegistroPage({ onVerExpediente }) {
   const [ingresoPacienteId, setIngresoPacienteId] = useState(null);
   const [mostrarFicha, setMostrarFicha] = useState(false);
   const [escanerAbierto, setEscanerAbierto] = useState(false);
+  const [escaneoQRAbierto, setEscaneoQRAbierto] = useState(false);
   const [mensajeDocumento, setMensajeDocumento] = useState(null);
   const [mensajeFichaDocumento, setMensajeFichaDocumento] = useState(null);
   // Dev-Mari: el expediente fisico se escanea ANTES de que el paciente
@@ -591,9 +593,14 @@ export function RegistroPage({ onVerExpediente }) {
           {mensajeDocumento && <Banner tone={mensajeDocumento.tone}>{mensajeDocumento.texto}</Banner>}
 
           {!documentoPendiente ? (
-            <Button onClick={() => setEscanerAbierto(true)}>
-              <span className="flex items-center gap-1.5"><Camera size={15} /> Escanear expediente</span>
-            </Button>
+            <div className="flex gap-2 flex-wrap">
+              <Button onClick={() => setEscanerAbierto(true)}>
+                <span className="flex items-center gap-1.5"><Camera size={15} /> Escanear en esta computadora</span>
+              </Button>
+              <Button variant="secondary" onClick={() => setEscaneoQRAbierto(true)}>
+                <span className="flex items-center gap-1.5"><Smartphone size={15} /> Escanear con el teléfono</span>
+              </Button>
+            </div>
           ) : (
             <div className="flex items-end gap-3 justify-between flex-wrap">
               <span className="flex items-center gap-2 min-w-0 text-sm">
@@ -805,6 +812,11 @@ export function RegistroPage({ onVerExpediente }) {
         onClose={() => setEscanerAbierto(false)}
         onConfirmar={manejarEscaneoConfirmado}
         mensajeExito="El documento quedó listo — se adjuntará al paciente al hacer clic en 'Guardar paciente'."
+      />
+      <EscaneoQRModal
+        open={escaneoQRAbierto}
+        onClose={() => setEscaneoQRAbierto(false)}
+        onConfirmar={manejarEscaneoConfirmado}
       />
     </div>
   );
