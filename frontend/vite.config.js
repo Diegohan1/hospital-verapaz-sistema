@@ -22,6 +22,12 @@ export default defineConfig({
     // al mismo WiFi.
     host: true,
     https: httpsDisponible ? { key: fs.readFileSync(certKey), cert: fs.readFileSync(certFile) } : undefined,
+    // Dev-Mari: Vite rechaza peticiones con un Host que no reconoce (proteccion
+    // contra DNS rebinding). Al exponer el dev server por un tunel (ngrok u
+    // otro) para presentar desde cualquier red, el Host de la peticion es el
+    // dominio publico del tunel, no localhost/IP de LAN — hay que permitirlo
+    // explicitamente o Vite responde "Blocked request".
+    allowedHosts: true,
     proxy: {
       "/api": "http://localhost:4000",
     },
