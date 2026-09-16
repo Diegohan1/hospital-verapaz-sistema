@@ -5,7 +5,7 @@ import { Button } from "./Button";
 import { Banner } from "./Banner";
 import { COLORS } from "../styles/tokens";
 import { procesarEscaneoAutomatico, idAleatorio } from "../utils/scanProcessing";
-import { generarPdfDePaginas, validarPdf, descargarPdf, nombreDescarga, tamanoLegibleMB, renderizarPrimeraPaginaPdf } from "../utils/pdfDocumentos";
+import { generarPdfDePaginas, validarPdf, descargarPdf, nombreDescarga, tamanoLegibleMB, renderizarPrimeraPaginaPdf, esPdf } from "../utils/pdfDocumentos";
 import { extraerDatosBasicos } from "../utils/ocrDatosBasicos";
 
 // Escaner documental automatico (Cambios2): como un escaner de impresion —
@@ -31,10 +31,6 @@ function dataUrlDesdeVideo(video, maxWidth) {
   const ctx = canvas.getContext("2d");
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
   return canvas.toDataURL("image/jpeg", 0.95);
-}
-
-function esPdf(file) {
-  return file?.type === "application/pdf" || /\.pdf$/i.test(file?.name || "");
 }
 
 function archivoValido(file) {
@@ -347,7 +343,7 @@ export function CameraScannerModal({
           <Button variant="secondary" onClick={() => inputRef.current?.click()}>
             <span className="flex items-center gap-1.5"><ImagePlus size={15} /> Subir imagen o PDF del escáner</span>
           </Button>
-          <input ref={inputRef} type="file" accept="image/*,.pdf,application/pdf" capture="environment" className="hidden" onChange={manejarArchivo} aria-label="Subir imagen o PDF del documento" />
+          <input ref={inputRef} type="file" accept="image/*,.pdf,application/pdf" className="hidden" onChange={manejarArchivo} aria-label="Subir imagen o PDF del documento" />
           {estado === "capturando" && (
             <Button variant="secondary" onClick={detenerCamara}>
               <span className="flex items-center gap-1.5"><X size={15} /> Detener cámara</span>

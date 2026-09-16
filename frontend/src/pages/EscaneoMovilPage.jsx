@@ -3,7 +3,7 @@ import { useParams } from "react-router-dom";
 import { Camera, ImagePlus, AlertTriangle, RefreshCw, CheckCircle2, X, Trash2 } from "lucide-react";
 import { COLORS } from "../styles/tokens";
 import { procesarEscaneoAutomatico, idAleatorio } from "../utils/scanProcessing";
-import { generarPdfDePaginas, validarPdf, nombreDescarga } from "../utils/pdfDocumentos";
+import { generarPdfDePaginas, validarPdf, nombreDescarga, esPdf, leerInfoPdf } from "../utils/pdfDocumentos";
 import { api } from "../services/api";
 
 const CAMERA_MAX_WIDTH = 1600;
@@ -86,7 +86,7 @@ export function EscaneoMovilPage() {
   async function activarCamara() {
     setError(null);
     if (!navigator.mediaDevices?.getUserMedia) {
-      setError("Este navegador no permite usar la cámara. Use 'Subir imagen'.");
+      setError("Este navegador no permite usar la cámara. Use 'Elegir imagen o PDF'.");
       return;
     }
     try {
@@ -102,8 +102,8 @@ export function EscaneoMovilPage() {
       setCamaraActiva(true);
       setEstado("capturando");
     } catch (err) {
-      if (err.name === "NotAllowedError") setError("Permiso de cámara denegado. Habilítelo o use 'Subir imagen'.");
-      else if (err.name === "NotFoundError") setError("No se detectó ninguna cámara. Use 'Subir imagen'.");
+      if (err.name === "NotAllowedError") setError("Permiso de cámara denegado. Habilítelo o use 'Elegir imagen o PDF'.");
+      else if (err.name === "NotFoundError") setError("No se detectó ninguna cámara. Use 'Elegir imagen o PDF'.");
       else setError("No se pudo iniciar la cámara: " + err.message);
     }
   }
@@ -133,10 +133,54 @@ export function EscaneoMovilPage() {
     escanearAutomaticamente(dataUrlDesdeVideo(videoRef.current, CAMERA_MAX_WIDTH));
   }
 
+  // Envio final a la sesion: comun para el PDF armado con las paginas de la
+  // camara y para un PDF que ya vino listo del almacenamiento del telefono.
+  async function enviarPdf(blob, totalPaginas) {
+    setEnviando(true);
+    setError(null);
+    try {
+      const invalido = validarPdf(blob, totalPaginas);
+      if (invalido) {
+        setError(invalido);
+        return;
+      }
+      const fd = new FormData();
+      const nombre = nombreDescarga();
+      fd.append("documento", new File([blob], nombre, { type: "application/pdf" }));
+      fd.append("paginas", String(totalPaginas));
+      fd.append("nombre", nombre);
+      await api.post(`/escaneo-movil/sesiones/${sesionId}/subir`, fd);
+      detenerCamara();
+      setEnviado(true);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  // Dev-Mari: un PDF elegido del almacenamiento ya es el documento final
+  // (por ejemplo, uno que el escaner de una impresora dejo guardado) — no
+  // pasa por deteccion de bordes/perspectiva, que es solo para fotos.
+  async function manejarArchivoPdf(file) {
+    setError(null);
+    try {
+      const bytes = await file.arrayBuffer();
+      const { totalPaginas } = await leerInfoPdf(bytes);
+      await enviarPdf(new Blob([bytes], { type: "application/pdf" }), totalPaginas);
+    } catch (err) {
+      setError("No se pudo leer el PDF (¿está dañado o protegido con contraseña?): " + err.message);
+    }
+  }
+
   async function manejarArchivo(evento) {
     const file = evento.target.files?.[0];
     evento.target.value = "";
     if (!file) return;
+    if (esPdf(file)) {
+      await manejarArchivoPdf(file);
+      return;
+    }
     try {
       const dataUrl = await dataUrlDesdeArchivo(file);
       await escanearAutomaticamente(dataUrl);
@@ -151,27 +195,11 @@ export function EscaneoMovilPage() {
   }
 
   async function enviar() {
-    setEnviando(true);
-    setError(null);
     try {
       const { blob, paginas: total } = await generarPdfDePaginas(paginas.map((p) => p.dataUrl));
-      const invalido = validarPdf(blob, total);
-      if (invalido) {
-        setError(invalido);
-        return;
-      }
-      const fd = new FormData();
-      const nombre = nombreDescarga();
-      fd.append("documento", new File([blob], nombre, { type: "application/pdf" }));
-      fd.append("paginas", String(total));
-      fd.append("nombre", nombre);
-      await api.post(`/escaneo-movil/sesiones/${sesionId}/subir`, fd);
-      detenerCamara();
-      setEnviado(true);
+      await enviarPdf(blob, total);
     } catch (err) {
       setError(err.message);
-    } finally {
-      setEnviando(false);
     }
   }
 
@@ -238,9 +266,9 @@ export function EscaneoMovilPage() {
             )
           )}
           <button onClick={() => inputRef.current?.click()} className="flex-1 min-w-[140px] py-3 rounded-xl font-semibold flex items-center justify-center gap-1.5" style={{ border: "1px solid #444", color: "white" }}>
-            <ImagePlus size={16} /> Subir imagen
+            <ImagePlus size={16} /> Elegir imagen o PDF
           </button>
-          <input ref={inputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={manejarArchivo} aria-label="Subir imagen del documento" />
+          <input ref={inputRef} type="file" accept="image/*,.pdf,application/pdf" className="hidden" onChange={manejarArchivo} aria-label="Elegir imagen o PDF del almacenamiento" />
           {camaraActiva && (
             <button onClick={detenerCamara} className="flex-1 min-w-[140px] py-3 rounded-xl font-semibold flex items-center justify-center gap-1.5" style={{ border: "1px solid #444", color: "white" }}>
               <X size={16} /> Detener cámara
