@@ -58,10 +58,10 @@ export async function generarPdfDePaginas(paginas, { tamano = DOCUMENTO_CONFIG.T
   return { blob: pdf.output("blob"), paginas: insertadas };
 }
 
-export function nombreDescarga(pacienteId) {
+export function nombreDescarga() {
   const fecha = new Date().toISOString().slice(0, 10).replace(/-/g, "");
   const hora = new Date().toTimeString().slice(0, 5).replace(":", "");
-  return `documento-paciente-${pacienteId}-${fecha}${hora}.pdf`;
+  return `documento-escaneado-${fecha}${hora}.pdf`;
 }
 
 export function tamanoLegibleMB(bytes) {

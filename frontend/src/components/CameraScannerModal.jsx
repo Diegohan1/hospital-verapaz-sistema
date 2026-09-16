@@ -62,7 +62,7 @@ function dataUrlDesdeArchivo(file) {
   });
 }
 
-export function CameraScannerModal({ open, onClose, pacienteId, onConfirmar, titulo = "Escanear documento del paciente" }) {
+export function CameraScannerModal({ open, onClose, titulo = "Escanear documento" }) {
   const [estado, setEstado] = useState("idle");
   const [error, setError] = useState(null);
   const [aviso, setAviso] = useState(null); // "Página 2 escaneada y agregada"
@@ -200,7 +200,10 @@ export function CameraScannerModal({ open, onClose, pacienteId, onConfirmar, tit
 
   // ---- PDF final ----
 
-  async function terminarYGuardar() {
+  // Sin paciente asignado (preparado para el OCR futuro que autoguardara un
+  // paciente a partir del documento): al terminar se genera el PDF y se
+  // descarga localmente, sin vincularlo a ningun expediente existente.
+  async function terminarYDescargar() {
     setFinalizando(true);
     setError(null);
     try {
@@ -211,17 +214,11 @@ export function CameraScannerModal({ open, onClose, pacienteId, onConfirmar, tit
         setEstado("error");
         return;
       }
-      const nombre = nombreDescarga(pacienteId);
+      const nombre = nombreDescarga();
+      descargarPdf(blob, nombre);
       setPdfResultado({ blob, paginas: total, nombre });
       setEstado("confirmado");
       detenerCamara();
-      if (onConfirmar) {
-        try {
-          await onConfirmar(blob, { paginas: total, nombre });
-        } catch (err) {
-          setError("El documento se generó, pero no se pudo guardar en el expediente: " + err.message + " Use 'Descargar copia' para no perderlo.");
-        }
-      }
     } catch (err) {
       setError(err.message || "Error al generar el PDF.");
       setEstado("error");
@@ -321,8 +318,8 @@ export function CameraScannerModal({ open, onClose, pacienteId, onConfirmar, tit
             ))}
           </div>
           <div className="mt-3">
-            <Button onClick={terminarYGuardar} disabled={finalizando}>
-              {finalizando ? "Generando PDF…" : `Terminar y guardar en el expediente (${paginas.length} página${paginas.length === 1 ? "" : "s"})`}
+            <Button onClick={terminarYDescargar} disabled={finalizando}>
+              {finalizando ? "Generando PDF…" : `Terminar y descargar PDF (${paginas.length} página${paginas.length === 1 ? "" : "s"})`}
             </Button>
           </div>
         </div>
@@ -333,11 +330,11 @@ export function CameraScannerModal({ open, onClose, pacienteId, onConfirmar, tit
         <div className="mt-2">
           <Banner tone="success">
             PDF generado automáticamente: {pdfResultado.paginas} página{pdfResultado.paginas === 1 ? "" : "s"}, {tamanoLegibleMB(pdfResultado.blob.size)}.
-            {onConfirmar ? " El documento se guardó en el expediente del paciente." : " Descargue la copia local; aún no hay persistencia configurada."}
+            Se descargó al equipo como "{pdfResultado.nombre}".
           </Banner>
           <div className="flex gap-2 mt-3">
             <Button variant="secondary" onClick={() => descargarPdf(pdfResultado.blob, pdfResultado.nombre)}>
-              <span className="flex items-center gap-1.5"><Download size={14} /> Descargar copia</span>
+              <span className="flex items-center gap-1.5"><Download size={14} /> Descargar de nuevo</span>
             </Button>
             <Button variant="secondary" onClick={cerrar}>Cerrar</Button>
           </div>
