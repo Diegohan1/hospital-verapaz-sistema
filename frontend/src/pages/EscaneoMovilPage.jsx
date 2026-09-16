@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { Camera, ImagePlus, AlertTriangle, RefreshCw, CheckCircle2, X, Trash2 } from "lucide-react";
 import { COLORS } from "../styles/tokens";
-import { procesarEscaneoAutomatico } from "../utils/scanProcessing";
+import { procesarEscaneoAutomatico, idAleatorio } from "../utils/scanProcessing";
 import { generarPdfDePaginas, validarPdf, nombreDescarga } from "../utils/pdfDocumentos";
 import { api } from "../services/api";
 
@@ -116,8 +116,11 @@ export function EscaneoMovilPage() {
     setEstado("procesando");
     setError(null);
     try {
-      const { canvas } = await procesarEscaneoAutomatico(dataUrl, { maxAncho: CAMERA_MAX_WIDTH });
-      setPaginas((p) => [...p, { id: crypto.randomUUID(), dataUrl: canvas.toDataURL("image/jpeg", 0.9) }]);
+      const { canvas } = await Promise.race([
+        procesarEscaneoAutomatico(dataUrl, { maxAncho: CAMERA_MAX_WIDTH }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("El procesamiento tardó demasiado; intente de nuevo con mejor luz o más cerca del documento.")), 20000)),
+      ]);
+      setPaginas((p) => [...p, { id: idAleatorio(), dataUrl: canvas.toDataURL("image/jpeg", 0.9) }]);
       setEstado(camaraActiva ? "capturando" : "idle");
     } catch (err) {
       setError(err.message || "Error al procesar la captura.");

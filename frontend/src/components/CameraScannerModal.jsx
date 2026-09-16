@@ -4,7 +4,7 @@ import { Modal } from "./Modal";
 import { Button } from "./Button";
 import { Banner } from "./Banner";
 import { COLORS } from "../styles/tokens";
-import { procesarEscaneoAutomatico } from "../utils/scanProcessing";
+import { procesarEscaneoAutomatico, idAleatorio } from "../utils/scanProcessing";
 import { generarPdfDePaginas, validarPdf, descargarPdf, nombreDescarga, tamanoLegibleMB, renderizarPrimeraPaginaPdf } from "../utils/pdfDocumentos";
 import { extraerDatosBasicos } from "../utils/ocrDatosBasicos";
 
@@ -175,7 +175,7 @@ export function CameraScannerModal({
         procesarEscaneoAutomatico(dataUrl, { maxAncho: SCAN_CONFIG.CAMERA_MAX_WIDTH }),
         new Promise((_, reject) => setTimeout(() => reject(new Error("El procesamiento tardó demasiado; intente de nuevo.")), SCAN_CONFIG.TIMEOUT_PROCESAMIENTO_MS)),
       ]);
-      setPaginas((p) => [...p, { id: crypto.randomUUID(), dataUrl: canvas.toDataURL("image/jpeg", 0.9) }]);
+      setPaginas((p) => [...p, { id: idAleatorio(), dataUrl: canvas.toDataURL("image/jpeg", 0.9) }]);
       setAviso(`Página ${paginas.length + 1} escaneada: bordes y perspectiva corregidos automáticamente.`);
       setEstado(camaraActiva ? "capturando" : "idle");
     } catch (err) {

@@ -7,6 +7,15 @@
 
 const ANCHO_ANALISIS = 400; // resolucion del mapa de bordes (rapido y suficiente)
 
+// Dev-Mari: id local para cada pagina escaneada (solo para la key de React
+// y para poder quitarla de la lista) — no es un dato sensible, no necesita
+// ser criptografico. crypto.randomUUID() solo existe en contexto seguro
+// (HTTPS o localhost); el escaneo desde el telefono via QR entra por la IP
+// de red en HTTP plano, donde esa funcion no existe y truena en silencio.
+export function idAleatorio() {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
 export function canvasDesdeDataUrl(dataUrl) {
   return new Promise((resolve, reject) => {
     const img = new Image();
