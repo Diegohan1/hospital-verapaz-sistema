@@ -108,7 +108,13 @@ export function descargarPdf(blob, nombre) {
 // cuantas paginas trae y (b) renderizar la primera como imagen, que es lo
 // unico que necesita el OCR de datos basicos.
 export async function leerInfoPdf(arrayBuffer) {
-  const doc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  // pdf.js puede transferir (vaciar) el ArrayBuffer que recibe al pasarlo a
+  // su worker interno. Se le pasa una copia independiente para que el
+  // buffer original — que quien llama suele seguir usando para armar el
+  // Blob que se sube al servidor — no quede vacio despues de esta llamada
+  // (si quedara vacio, el backend rechazaria el PDF como "no valido" aunque
+  // el archivo original estuviera perfectamente bien).
+  const doc = await pdfjsLib.getDocument({ data: arrayBuffer.slice(0) }).promise;
   return { totalPaginas: doc.numPages, doc };
 }
 

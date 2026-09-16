@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { Camera, ImagePlus, AlertTriangle, RefreshCw, CheckCircle2, X, Trash2 } from "lucide-react";
+import { Camera, ImagePlus, AlertTriangle, RefreshCw, CheckCircle2, Trash2 } from "lucide-react";
 import { COLORS } from "../styles/tokens";
 import { procesarEscaneoAutomatico, idAleatorio } from "../utils/scanProcessing";
 import { generarPdfDePaginas, validarPdf, nombreDescarga, esPdf, leerInfoPdf } from "../utils/pdfDocumentos";
@@ -8,15 +8,6 @@ import { api } from "../services/api";
 
 const CAMERA_MAX_WIDTH = 1600;
 const MAX_PAGINAS = 30;
-
-function dataUrlDesdeVideo(video, maxWidth) {
-  const escala = Math.min(1, maxWidth / video.videoWidth);
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.round(video.videoWidth * escala);
-  canvas.height = Math.round(video.videoHeight * escala);
-  canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
-  return canvas.toDataURL("image/jpeg", 0.95);
-}
 
 function dataUrlDesdeArchivo(file) {
   return new Promise((resolve, reject) => {
@@ -49,21 +40,23 @@ function Pantalla({ children }) {
 
 // Dev-Mari: pagina que abre el TELEFONO al escanear el QR desde la
 // computadora (EscaneoQRModal). Sin login — el id de sesion en la URL es lo
-// que autoriza la subida, como un enlace de un solo uso. Reusa el mismo
-// motor de captura (deteccion de bordes/perspectiva) que el escaner
-// integrado, pero en una pagina completa pensada para pantalla de celular.
+// que autoriza la subida, como un enlace de un solo uso.
+//
+// Un solo boton "Elegir imagen o PDF" (input de archivo nativo, sin el
+// atributo capture): el propio selector del telefono ya ofrece "Camara"
+// como una de las fuentes, junto con la galeria y el almacenamiento — no
+// hace falta un boton aparte con video en vivo (getUserMedia), que ademas
+// requiere HTTPS. Reusa el mismo motor de correccion de bordes/perspectiva
+// que el escaner integrado de la computadora.
 export function EscaneoMovilPage() {
   const { sesionId } = useParams();
   const [valido, setValido] = useState(null); // null=verificando, true/false
   const [enviado, setEnviado] = useState(false);
   const [enviando, setEnviando] = useState(false);
-  const [estado, setEstado] = useState("idle"); // idle | capturando | procesando | error
+  const [procesando, setProcesando] = useState(false);
   const [error, setError] = useState(null);
-  const [camaraActiva, setCamaraActiva] = useState(false);
   const [paginas, setPaginas] = useState([]);
 
-  const videoRef = useRef(null);
-  const streamRef = useRef(null);
   const inputRef = useRef(null);
 
   useEffect(() => {
@@ -72,69 +65,28 @@ export function EscaneoMovilPage() {
       .catch(() => setValido(false));
   }, [sesionId]);
 
-  const detenerCamara = useCallback(() => {
-    if (streamRef.current) {
-      for (const t of streamRef.current.getTracks()) t.stop();
-      streamRef.current = null;
-    }
-    if (videoRef.current) videoRef.current.srcObject = null;
-    setCamaraActiva(false);
-  }, []);
-
-  useEffect(() => () => detenerCamara(), [detenerCamara]);
-
-  async function activarCamara() {
-    setError(null);
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setError("Este navegador no permite usar la cámara. Use 'Elegir imagen o PDF'.");
-      return;
-    }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1440 } },
-        audio: false,
-      });
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
-      setCamaraActiva(true);
-      setEstado("capturando");
-    } catch (err) {
-      if (err.name === "NotAllowedError") setError("Permiso de cámara denegado. Habilítelo o use 'Elegir imagen o PDF'.");
-      else if (err.name === "NotFoundError") setError("No se detectó ninguna cámara. Use 'Elegir imagen o PDF'.");
-      else setError("No se pudo iniciar la cámara: " + err.message);
-    }
-  }
-
   async function escanearAutomaticamente(dataUrl) {
     if (paginas.length >= MAX_PAGINAS) {
       setError(`Ya alcanzó el máximo de ${MAX_PAGINAS} páginas.`);
       return;
     }
-    setEstado("procesando");
+    setProcesando(true);
     setError(null);
     try {
       const { canvas } = await Promise.race([
         procesarEscaneoAutomatico(dataUrl, { maxAncho: CAMERA_MAX_WIDTH }),
         new Promise((_, reject) => setTimeout(() => reject(new Error("El procesamiento tardó demasiado; intente de nuevo con mejor luz o más cerca del documento.")), 20000)),
       ]);
-      setPaginas((p) => [...p, { id: idAleatorio(), dataUrl: canvas.toDataURL("image/jpeg", 0.9) }]);
-      setEstado(camaraActiva ? "capturando" : "idle");
+      setPaginas((p) => [...p, { id: idAleatorio(), dataUrl: canvas.toDataURL("image/jpeg", 0.85) }]);
     } catch (err) {
       setError(err.message || "Error al procesar la captura.");
-      setEstado(camaraActiva ? "capturando" : "error");
+    } finally {
+      setProcesando(false);
     }
   }
 
-  function capturarPagina() {
-    if (!videoRef.current?.videoWidth) return;
-    escanearAutomaticamente(dataUrlDesdeVideo(videoRef.current, CAMERA_MAX_WIDTH));
-  }
-
-  // Envio final a la sesion: comun para el PDF armado con las paginas de la
-  // camara y para un PDF que ya vino listo del almacenamiento del telefono.
+  // Envio final a la sesion: comun para el PDF armado con las paginas
+  // capturadas y para un PDF que ya vino listo del almacenamiento.
   async function enviarPdf(blob, totalPaginas) {
     setEnviando(true);
     setError(null);
@@ -150,9 +102,10 @@ export function EscaneoMovilPage() {
       fd.append("paginas", String(totalPaginas));
       fd.append("nombre", nombre);
       await api.post(`/escaneo-movil/sesiones/${sesionId}/subir`, fd);
-      detenerCamara();
       setEnviado(true);
     } catch (err) {
+      // No se limpian las paginas ya capturadas: si el envio falla, el
+      // usuario puede reintentar sin tener que volver a escanear todo.
       setError(err.message);
     } finally {
       setEnviando(false);
@@ -160,8 +113,8 @@ export function EscaneoMovilPage() {
   }
 
   // Dev-Mari: un PDF elegido del almacenamiento ya es el documento final
-  // (por ejemplo, uno que el escaner de una impresora dejo guardado) — no
-  // pasa por deteccion de bordes/perspectiva, que es solo para fotos.
+  // (por ejemplo, uno que dejo el escaner de una impresora) — no pasa por
+  // deteccion de bordes/perspectiva, que es solo para fotos.
   async function manejarArchivoPdf(file) {
     setError(null);
     try {
@@ -186,7 +139,6 @@ export function EscaneoMovilPage() {
       await escanearAutomaticamente(dataUrl);
     } catch (err) {
       setError(err.message);
-      setEstado("error");
     }
   }
 
@@ -230,7 +182,8 @@ export function EscaneoMovilPage() {
       <div className="max-w-md mx-auto text-white">
         <div className="font-semibold text-lg mb-1 flex items-center gap-2"><Camera size={20} /> Escanear expediente</div>
         <p className="text-xs mb-4" style={{ color: "#aaa" }}>
-          Tome una foto por cada página. El sistema corrige bordes y perspectiva automáticamente.
+          Toque el botón: puede elegir "Cámara" para tomar una foto por página, o "Archivos"/"Galería" para un PDF o
+          imagen ya guardada. El sistema corrige bordes y perspectiva automáticamente.
         </p>
 
         {error && (
@@ -239,42 +192,22 @@ export function EscaneoMovilPage() {
           </div>
         )}
 
-        {estado === "capturando" && (
-          <div className="relative rounded-xl overflow-hidden mb-3">
-            <video ref={videoRef} playsInline muted className="w-full" />
-            <div className="absolute inset-4 rounded-lg pointer-events-none" style={{ border: "2px dashed rgba(255,255,255,0.65)" }} />
-          </div>
-        )}
-
-        {estado === "procesando" && (
+        {procesando && (
           <div className="py-10 text-center">
             <RefreshCw size={28} className="animate-spin mx-auto" />
             <p className="text-sm mt-3" style={{ color: "#aaa" }}>Escaneando…</p>
           </div>
         )}
 
-        <div className="flex flex-wrap gap-2">
-          {estado === "capturando" ? (
-            <button onClick={capturarPagina} className="flex-1 min-w-[140px] py-3 rounded-xl font-semibold flex items-center justify-center gap-1.5" style={{ backgroundColor: COLORS.navy, color: "white" }}>
-              <Camera size={16} /> Capturar página
-            </button>
-          ) : (
-            !camaraActiva && (
-              <button onClick={activarCamara} className="flex-1 min-w-[140px] py-3 rounded-xl font-semibold flex items-center justify-center gap-1.5" style={{ backgroundColor: COLORS.navy, color: "white" }}>
-                <Camera size={16} /> Activar cámara
-              </button>
-            )
-          )}
-          <button onClick={() => inputRef.current?.click()} className="flex-1 min-w-[140px] py-3 rounded-xl font-semibold flex items-center justify-center gap-1.5" style={{ border: "1px solid #444", color: "white" }}>
-            <ImagePlus size={16} /> Elegir imagen o PDF
-          </button>
-          <input ref={inputRef} type="file" accept="image/*,.pdf,application/pdf" className="hidden" onChange={manejarArchivo} aria-label="Elegir imagen o PDF del almacenamiento" />
-          {camaraActiva && (
-            <button onClick={detenerCamara} className="flex-1 min-w-[140px] py-3 rounded-xl font-semibold flex items-center justify-center gap-1.5" style={{ border: "1px solid #444", color: "white" }}>
-              <X size={16} /> Detener cámara
-            </button>
-          )}
-        </div>
+        <button
+          onClick={() => inputRef.current?.click()}
+          disabled={procesando}
+          className="w-full py-3 rounded-xl font-semibold flex items-center justify-center gap-1.5"
+          style={{ backgroundColor: COLORS.navy, color: "white", opacity: procesando ? 0.7 : 1 }}
+        >
+          <ImagePlus size={16} /> Elegir imagen o PDF
+        </button>
+        <input ref={inputRef} type="file" accept="image/*,.pdf,application/pdf" className="hidden" onChange={manejarArchivo} aria-label="Elegir imagen o PDF del almacenamiento" />
 
         {paginas.length > 0 && (
           <div className="mt-4">
