@@ -48,6 +48,24 @@ function Pantalla({ children }) {
 // hace falta un boton aparte con video en vivo (getUserMedia), que ademas
 // requiere HTTPS. Reusa el mismo motor de correccion de bordes/perspectiva
 // que el escaner integrado de la computadora.
+// Android puede matar en segundo plano la pestana del navegador mientras la
+// app de Camara esta abierta (para liberar memoria); al volver, la pagina
+// se recarga desde cero y se pierde todo el estado en memoria. Para que no
+// se pierdan las paginas ya escaneadas, se guardan en sessionStorage (solo
+// mientras dura esta pestana) y se recuperan si la pagina se recarga.
+function claveAlmacenamiento(sesionId) {
+  return `escaneo-movil-paginas-${sesionId}`;
+}
+
+function leerPaginasGuardadas(sesionId) {
+  try {
+    const guardadas = sessionStorage.getItem(claveAlmacenamiento(sesionId));
+    return guardadas ? JSON.parse(guardadas) : [];
+  } catch {
+    return [];
+  }
+}
+
 export function EscaneoMovilPage() {
   const { sesionId } = useParams();
   const [valido, setValido] = useState(null); // null=verificando, true/false
@@ -55,7 +73,8 @@ export function EscaneoMovilPage() {
   const [enviando, setEnviando] = useState(false);
   const [procesando, setProcesando] = useState(false);
   const [error, setError] = useState(null);
-  const [paginas, setPaginas] = useState([]);
+  const [paginas, setPaginas] = useState(() => leerPaginasGuardadas(sesionId));
+  const [recuperadas] = useState(() => leerPaginasGuardadas(sesionId).length);
 
   const inputRef = useRef(null);
 
@@ -64,6 +83,18 @@ export function EscaneoMovilPage() {
       .then((d) => setValido(!!d.valido))
       .catch(() => setValido(false));
   }, [sesionId]);
+
+  // Persistir cada cambio: si Android recarga la pagina, se recuperan al
+  // volver a montar el componente (arriba, en el useState inicial).
+  useEffect(() => {
+    try {
+      if (paginas.length) sessionStorage.setItem(claveAlmacenamiento(sesionId), JSON.stringify(paginas));
+      else sessionStorage.removeItem(claveAlmacenamiento(sesionId));
+    } catch {
+      // almacenamiento lleno o no disponible: no bloquea el escaneo, solo
+      // no habria recuperacion si la pagina se recarga.
+    }
+  }, [paginas, sesionId]);
 
   async function escanearAutomaticamente(dataUrl) {
     if (paginas.length >= MAX_PAGINAS) {
@@ -102,6 +133,7 @@ export function EscaneoMovilPage() {
       fd.append("paginas", String(totalPaginas));
       fd.append("nombre", nombre);
       await api.post(`/escaneo-movil/sesiones/${sesionId}/subir`, fd);
+      try { sessionStorage.removeItem(claveAlmacenamiento(sesionId)); } catch { /* no critico */ }
       setEnviado(true);
     } catch (err) {
       // No se limpian las paginas ya capturadas: si el envio falla, el
@@ -189,6 +221,12 @@ export function EscaneoMovilPage() {
         {error && (
           <div className="rounded-lg px-3 py-2 mb-3 text-sm" style={{ backgroundColor: "#4a1f1f", color: "#ffb3b3" }}>
             {error}
+          </div>
+        )}
+
+        {recuperadas > 0 && (
+          <div className="rounded-lg px-3 py-2 mb-3 text-sm" style={{ backgroundColor: "#1f3a2a", color: "#a8e6b8" }}>
+            Se recuperaron {recuperadas} página{recuperadas === 1 ? "" : "s"} de un intento anterior (el navegador se reinició). Puede seguir agregando o enviarlas.
           </div>
         )}
 
