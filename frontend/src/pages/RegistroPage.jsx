@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Printer, Camera, FileText, Download, Trash2, Smartphone } from "lucide-react";
+import { Printer, Camera, FileText, Download, Trash2, Smartphone, Eye } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
 import { Card } from "../components/Card";
 import { Table } from "../components/Table";
@@ -225,6 +225,15 @@ export function RegistroPage({ onVerExpediente }) {
   function quitarDocumentoPendiente() {
     setDocumentoPendiente(null);
     setMensajeDocumento(null);
+  }
+
+  // Abre el PDF escaneado (todavia sin guardar) en una pestaña nueva para
+  // revisarlo antes de confirmar el registro del paciente.
+  function verDocumentoPendiente() {
+    if (!documentoPendiente) return;
+    const url = URL.createObjectURL(documentoPendiente.blob);
+    window.open(url, "_blank");
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
   }
 
   async function descargarDocumento(pacienteId, doc, alError) {
@@ -618,9 +627,14 @@ export function RegistroPage({ onVerExpediente }) {
                 />
                 <p className="text-[11px] mt-1" style={{ color: "#999" }}>Distinta de la fecha de registro en el sistema, que se guarda sola.</p>
               </FormField>
-              <button onClick={quitarDocumentoPendiente} className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-lg" style={{ color: COLORS.red }}>
-                <Trash2 size={13} /> Quitar escaneo
-              </button>
+              <span className="flex gap-1">
+                <button onClick={verDocumentoPendiente} className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-lg" style={{ color: COLORS.navy }}>
+                  <Eye size={13} /> Ver documento
+                </button>
+                <button onClick={quitarDocumentoPendiente} className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-lg" style={{ color: COLORS.red }}>
+                  <Trash2 size={13} /> Quitar escaneo
+                </button>
+              </span>
             </div>
           )}
         </Card>
