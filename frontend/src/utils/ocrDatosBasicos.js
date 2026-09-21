@@ -16,6 +16,7 @@
 // El resultado es siempre un punto de partida editable, nunca se guarda sin
 // que el personal lo revise.
 import { createWorker } from "tesseract.js";
+import { api } from "../services/api.js";
 
 // Etiquetas de la hoja (tolerantes a acentos/mayusculas y a los errores
 // tipicos del OCR). Se usan tanto para ubicar un campo como para saber donde
@@ -37,6 +38,9 @@ const ETIQUETAS = {
 // Cualquier etiqueta de la hoja que pueda aparecer en el mismo renglon y
 // marque el fin del valor anterior.
 const CORTE = /(tel[eé]fono|\bedad\b|\bsexo\b|religi[oó]n|ocupaci[oó]n|\bD\.?P\.?[Il1]\.?\b|parentesco|\bhora\b|fecha\s*de|estado\s*civil|nacionalidad|lugar\s*de|historia\s*cl[ií]nica|direcci[oó]n|nombre\s*(completo|del|de\s*la))/i;
+
+// Telefono impreso en el membrete de la hoja: nunca es el del paciente.
+const TELEFONO_HOSPITAL = "79529724";
 
 const MESES = { enero: 1, febrero: 2, marzo: 3, abril: 4, mayo: 5, junio: 6, julio: 7, agosto: 8, septiembre: 9, setiembre: 9, octubre: 10, noviembre: 11, diciembre: 12 };
 
@@ -101,7 +105,12 @@ export function parsearFecha(texto) {
 // Etapa 2 (pura, sin OCR): texto crudo -> campos. Devuelve null en lo que no
 // se encontro; nunca inventa valores.
 export function extraerCampos(textoCrudo) {
-  const lineas = (textoCrudo || "").split(/\r?\n/).map((l) => l.replace(/\s+/g, " ").trim()).filter(Boolean);
+  const todas = (textoCrudo || "").split(/\r?\n/).map((l) => l.replace(/\s+/g, " ").trim()).filter(Boolean);
+  // El encabezado impreso del hospital trae SU direccion y SU telefono
+  // (7952-9724); los datos del paciente empiezan en el titulo de la ficha.
+  // Sin este corte, "Telefono:" del membrete se tomaba como el del paciente.
+  const inicio = todas.findIndex((l) => /ficha\s*general|hoja\s*de\s*ingreso|historia\s*cl[ií]nica/i.test(l));
+  const lineas = inicio >= 0 ? todas.slice(inicio) : todas;
 
   // Nombre: solo la etiqueta "Nombre Completo" (la hoja tambien trae nombre
   // del conyugue, padre y madre, que no deben confundirse con el del paciente).
@@ -132,6 +141,7 @@ export function extraerCampos(textoCrudo) {
     if (d.length === 8) telefono = d;
     else if (d.length > 8) telefono = d.slice(0, 8);
   }
+  if (telefono === TELEFONO_HOSPITAL) telefono = null;
 
   // Historia clinica: alfanumerica con guiones/diagonales (el hospital la
   // asigna a mano; el formato exacto puede variar).
@@ -139,7 +149,7 @@ export function extraerCampos(textoCrudo) {
   const tasHistoria = valorTrasEtiqueta(lineas, ETIQUETAS.historia);
   if (tasHistoria) {
     const token = tasHistoria.match(/[A-Za-z0-9][A-Za-z0-9\-\/.]{0,38}/);
-    if (token && /\d/.test(token[0])) historiaClinica = token[0];
+    if (token && token[0].length >= 3 && /\d/.test(token[0])) historiaClinica = token[0];
   }
 
   const fechaNacimiento = parsearFecha(valorTrasEtiqueta(lineas, ETIQUETAS.fechaNacimiento));
@@ -269,7 +279,7 @@ export async function reconocer(dataUrl, { psms = ["6", "4"] } = {}) {
           const d = await leerDigitos(worker, imagen, rectDpi, 13, psm);
           if (d) dpiLecturas.push(d);
           const t = await leerDigitos(worker, imagen, rectTel, 8, psm);
-          if (t) telefonoLecturas.push(t);
+          if (t && t !== TELEFONO_HOSPITAL) telefonoLecturas.push(t);
         }
       }
     } catch {
@@ -282,15 +292,45 @@ export async function reconocer(dataUrl, { psms = ["6", "4"] } = {}) {
   }
 }
 
+// Lectura avanzada (modelo de vision en el servidor). Es opcional: si el
+// servidor no la tiene activada devuelve null y se usa el OCR local. Lanza
+// si esta activada pero fallo (para poder avisar y recurrir al OCR local).
+async function leerConVision(dataUrl) {
+  const estado = await api.get("/pacientes/lectura-avanzada/estado");
+  if (!estado?.disponible) return null;
+  const blob = await (await fetch(dataUrl)).blob();
+  const fd = new FormData();
+  fd.append("imagen", new File([blob], "expediente", { type: blob.type }));
+  const { campos } = await api.post("/pacientes/leer-expediente", fd);
+  return Object.values(campos || {}).some(Boolean) ? campos : null;
+}
+
 // Punto de entrada para la UI. Nunca lanza: si algo falla, devuelve el error
-// y todo en null, para que el formulario siga llenandose a mano. Devuelve
-// tambien el texto crudo leido, para poder ver que "vio" el OCR.
+// y todo en null, para que el formulario siga llenandose a mano.
+//   fuente: "ia" (lectura avanzada) o "local" (Tesseract en el navegador)
+//   avisoIA: por que fallo la lectura avanzada, si estaba activa y fallo
+//   textoCrudo: lo que "vio" el OCR local, para diagnosticar
 export async function extraerDatosBasicos(dataUrls) {
-  if (!dataUrls?.length) return { ...VACIO, textoCrudo: "", error: null };
+  if (!dataUrls?.length) return { ...VACIO, textoCrudo: "", error: null, fuente: "local", avisoIA: null };
+
+  let avisoIA = null;
+  try {
+    const campos = await leerConVision(dataUrls[0]);
+    if (campos) return { ...VACIO, ...campos, textoCrudo: "", error: null, fuente: "ia", avisoIA: null };
+  } catch (err) {
+    avisoIA = err?.message || String(err);
+  }
+
   try {
     const lecturas = await reconocer(dataUrls[0]);
-    return { ...combinar(lecturas), textoCrudo: lecturas.textos.join("\n----- (segunda lectura) -----\n"), error: null };
+    return {
+      ...combinar(lecturas),
+      textoCrudo: lecturas.textos.join("\n----- (segunda lectura) -----\n"),
+      error: null,
+      fuente: "local",
+      avisoIA,
+    };
   } catch (err) {
-    return { ...VACIO, textoCrudo: "", error: err?.message || String(err) };
+    return { ...VACIO, textoCrudo: "", error: err?.message || String(err), fuente: "local", avisoIA };
   }
 }

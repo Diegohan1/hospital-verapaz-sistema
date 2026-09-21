@@ -86,6 +86,9 @@ export function RegistroPage({ onVerExpediente }) {
     { pageSize: 20 }
   );
   const { data: medicosReferentes } = useFetch("/referidos");
+  // Dev-Mari: si el servidor tiene activada la lectura avanzada (modelo de
+  // vision), se le avisa al personal que la imagen viaja a un servicio externo.
+  const { data: lecturaAvanzada } = useFetch(puedeRegistrar ? "/pacientes/lectura-avanzada/estado" : null, { enabled: puedeRegistrar });
 
   const [ingresoPacienteId, setIngresoPacienteId] = useState(null);
   const [mostrarFicha, setMostrarFicha] = useState(false);
@@ -225,19 +228,23 @@ export function RegistroPage({ onVerExpediente }) {
       return nuevo;
     });
     setCamposOCR(new Set(llenados));
-    setOcrDetalle({ texto: d.textoCrudo || "", error: d.error || null });
+    setOcrDetalle({ texto: d.textoCrudo || "", error: d.error || null, fuente: d.fuente || "local", avisoIA: d.avisoIA || null });
     // Con un expediente escaneado, los datos opcionales ya quedan en el PDF
     // original: se ocultan por defecto (el interruptor los vuelve a mostrar).
     setMostrarOpcionales(false);
     setDocumentoPendiente({ blob, nombre, paginas, fechaDocumentoOriginal: d.fechaIngreso || "" });
 
+    const lector = d.fuente === "ia" ? "la lectura avanzada" : "el lector local";
+    // Si la lectura avanzada estaba activa pero fallo, se avisa por que (y se
+    // uso el lector local): asi no parece que "no paso nada".
+    const notaIA = d.avisoIA ? ` La lectura avanzada no estuvo disponible (${d.avisoIA}); se usó el lector local, que lee mal la letra a mano.` : "";
     let mensaje;
     if (d.error) {
-      mensaje = { tone: "info", texto: `El lector automático de texto no pudo ejecutarse (${d.error}). Complete los datos a mano; el escaneo igual se adjuntará al guardar.` };
+      mensaje = { tone: "info", texto: `El lector automático de texto no pudo ejecutarse (${d.error}). Complete los datos a mano; el escaneo igual se adjuntará al guardar.${notaIA}` };
     } else if (llenados.length) {
-      mensaje = { tone: "success", texto: `Se autorellenaron ${llenados.length} campo${llenados.length === 1 ? "" : "s"} con lo que se pudo leer del documento — verifíquelos contra el papel antes de guardar (la letra manuscrita se lee con errores).` };
+      mensaje = { tone: "success", texto: `Se autorellenaron ${llenados.length} campo${llenados.length === 1 ? "" : "s"} con ${lector} — verifíquelos contra el papel antes de guardar (la letra manuscrita se lee con errores).${notaIA}` };
     } else {
-      mensaje = { tone: "info", texto: "No se lograron leer datos del documento; complete el formulario a mano. El escaneo igual se adjuntará al guardar." };
+      mensaje = { tone: "info", texto: `No se lograron leer datos del documento con ${lector}; complete el formulario a mano. El escaneo igual se adjuntará al guardar.${notaIA}` };
     }
     setMensajeDocumento(mensaje);
   }
@@ -695,6 +702,13 @@ export function RegistroPage({ onVerExpediente }) {
             y se adjunta al paciente al hacer clic en "Guardar paciente".
           </p>
 
+          {lecturaAvanzada?.disponible && (
+            <p className="text-xs mb-3 font-semibold" style={{ color: COLORS.gold }}>
+              Lectura avanzada activa: para leer la letra a mano, la imagen de la primera página del expediente se envía a un
+              servicio externo (Anthropic) únicamente para extraer estos datos.
+            </p>
+          )}
+
           {mensajeDocumento && <Banner tone={mensajeDocumento.tone}>{mensajeDocumento.texto}</Banner>}
 
           {!documentoPendiente ? (
@@ -736,11 +750,15 @@ export function RegistroPage({ onVerExpediente }) {
 
           {documentoPendiente && ocrDetalle && (
             <details className="mt-3 text-xs" style={{ color: "#888" }}>
-              <summary className="cursor-pointer font-semibold">Ver qué texto leyó el escáner (diagnóstico)</summary>
-              {ocrDetalle.error && <p className="mt-2" style={{ color: COLORS.red }}>Error del lector: {ocrDetalle.error}</p>}
-              <pre className="whitespace-pre-wrap mt-2 p-2 rounded-lg overflow-auto" style={{ backgroundColor: "#f6f6f6", maxHeight: 220 }}>
-                {ocrDetalle.texto || "(no se leyó ningún texto)"}
-              </pre>
+              <summary className="cursor-pointer font-semibold">Ver cómo se leyó el documento (diagnóstico)</summary>
+              <p className="mt-2">Lector usado: <strong>{ocrDetalle.fuente === "ia" ? "lectura avanzada (modelo de visión)" : "lector local (Tesseract)"}</strong></p>
+              {ocrDetalle.avisoIA && <p className="mt-1" style={{ color: COLORS.gold }}>Lectura avanzada no disponible: {ocrDetalle.avisoIA}</p>}
+              {ocrDetalle.error && <p className="mt-1" style={{ color: COLORS.red }}>Error del lector: {ocrDetalle.error}</p>}
+              {ocrDetalle.fuente !== "ia" && (
+                <pre className="whitespace-pre-wrap mt-2 p-2 rounded-lg overflow-auto" style={{ backgroundColor: "#f6f6f6", maxHeight: 220 }}>
+                  {ocrDetalle.texto || "(no se leyó ningún texto)"}
+                </pre>
+              )}
             </details>
           )}
         </Card>
