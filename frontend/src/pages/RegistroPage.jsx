@@ -33,11 +33,15 @@ const PARENTESCOS = ["Esposo/a", "Padre", "Madre", "Hijo/a", "Hermano/a", "Abuel
 const RELIGIONES = ["Católica", "Evangélica / Cristiana", "Testigo de Jehová", "Mormona (SUD)", "Espiritualidad Maya", "Ninguna / Atea"];
 
 const CAMPOS_INGRESO_VACIOS = {
+  // Dev-Mari: datos de identificacion editables despues del registro (antes
+  // un error de digitacion —o del escaner— no se podia corregir).
+  idNombre: "", idDpi: "", idHistoria: "", idDireccion: "", idTelefono: "", idFechaNacimiento: "",
   tipoSangre: "",
   fechaIngreso: "", serviciosSolicitados: "", referidoDe: "", medicoReferenteId: "", impresionClinicaIngreso: "",
   fechaEgreso: "", diagnosticoEgresoCodigo: "", complicacionesCodigo: "", operacionesCodigo: "",
   condicionEgreso: "", autopsia: "", causaMuerte: "",
   matNumeroHijo: "", matFecha: "", matHora: "", matSexo: "", matCondicion: "",
+  matBebeNombre: "", matPadreNombre: "", matPadreDpi: "", matPadreTelefono: "",
 };
 
 // Los inputs datetime-local/date esperan "YYYY-MM-DDTHH:mm" / "YYYY-MM-DD" en
@@ -48,10 +52,13 @@ function toDatetimeLocal(iso) {
   const d = new Date(iso);
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 }
+// Fechas "de solo dia" (nacimiento del bebe, fecha de nacimiento) se guardan
+// como medianoche UTC: se leen en UTC. Convertirlas a hora local las corria un
+// dia atras en cada carga (en Guatemala, UTC-6) y, al volver a guardar,
+// retrocedian un dia mas cada vez.
 function toDateInput(iso) {
   if (!iso) return "";
-  const d = new Date(iso);
-  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  return new Date(iso).toISOString().slice(0, 10);
 }
 
 const OPCIONES_LUGAR = DEPARTAMENTOS_GUATEMALA.flatMap((d) =>
@@ -122,6 +129,12 @@ export function RegistroPage({ onVerExpediente }) {
     // egresoClinico; los campos planos legacy son solo fallback de datos viejos.
     const eg = pacienteDetalle.egresoClinico || {};
     setIngresoForm({
+      idNombre: pacienteDetalle.nombreCompleto || "",
+      idDpi: pacienteDetalle.dpi || "",
+      idHistoria: pacienteDetalle.historiaClinica || "",
+      idDireccion: pacienteDetalle.direccion || "",
+      idTelefono: pacienteDetalle.telefono || "",
+      idFechaNacimiento: toDateInput(pacienteDetalle.fechaNacimiento),
       tipoSangre: pacienteDetalle.tipoSangre || "",
       fechaIngreso: toDatetimeLocal(pacienteDetalle.fechaIngreso),
       serviciosSolicitados: pacienteDetalle.serviciosSolicitados || "",
@@ -140,6 +153,10 @@ export function RegistroPage({ onVerExpediente }) {
       matHora: pacienteDetalle.maternidad?.hora || "",
       matSexo: pacienteDetalle.maternidad?.sexo || "",
       matCondicion: pacienteDetalle.maternidad?.condicionEgresoBebe || "",
+      matBebeNombre: pacienteDetalle.maternidad?.bebeNombre || "",
+      matPadreNombre: pacienteDetalle.maternidad?.padreNombre || "",
+      matPadreDpi: pacienteDetalle.maternidad?.padreDpi || "",
+      matPadreTelefono: pacienteDetalle.maternidad?.padreTelefono || "",
     });
   }, [pacienteDetalle]);
 
@@ -162,10 +179,28 @@ export function RegistroPage({ onVerExpediente }) {
 
   async function handleSubmitIngreso(e) {
     e.preventDefault();
+    const f = ingresoForm;
+    // Identificacion editable: se valida aqui para dar el mensaje al lado del
+    // formulario en vez de un 400 generico del servidor.
+    const errorId =
+      (!f.idNombre.trim() && "El nombre no puede quedar vacío.") ||
+      (validarDPI(f.idDpi).estado !== "valido" && (validarDPI(f.idDpi).mensaje || "Ingrese un DPI completo y válido.")) ||
+      (telefonoIncompleto(f.idTelefono) && "El teléfono debe tener 8 dígitos.") ||
+      (telefonoIncompleto(f.matPadreTelefono) && "El teléfono del padre debe tener 8 dígitos.") ||
+      (f.matPadreDpi && validarDPI(f.matPadreDpi).estado !== "valido" && "El DPI del padre debe tener 13 dígitos.");
+    if (errorId) {
+      setMensajeIngreso({ tone: "error", texto: errorId });
+      return;
+    }
     setGuardandoIngreso(true);
     setMensajeIngreso(null);
-    const f = ingresoForm;
     const payload = {
+      nombreCompleto: f.idNombre.trim(),
+      dpi: limpiarDPI(f.idDpi),
+      historiaClinica: f.idHistoria.trim() || undefined,
+      direccion: f.idDireccion.trim() || null,
+      telefono: limpiarTelefono(f.idTelefono) || null,
+      fechaNacimiento: f.idFechaNacimiento || null,
       tipoSangre: f.tipoSangre || null,
       fechaIngreso: f.fechaIngreso ? new Date(f.fechaIngreso).toISOString() : null,
       serviciosSolicitados: f.serviciosSolicitados || null,
@@ -184,13 +219,17 @@ export function RegistroPage({ onVerExpediente }) {
         causaMuerte: f.causaMuerte || null,
       },
     };
-    if (f.matNumeroHijo || f.matFecha || f.matHora || f.matSexo || f.matCondicion) {
+    if (f.matNumeroHijo || f.matFecha || f.matHora || f.matSexo || f.matCondicion || f.matBebeNombre || f.matPadreNombre || f.matPadreDpi || f.matPadreTelefono) {
       payload.maternidad = {
         numeroHijo: f.matNumeroHijo ? Number(f.matNumeroHijo) : null,
         fecha: f.matFecha ? new Date(f.matFecha).toISOString() : null,
         hora: f.matHora || null,
         sexo: f.matSexo || null,
         condicionEgresoBebe: f.matCondicion || null,
+        bebeNombre: f.matBebeNombre.trim() || null,
+        padreNombre: f.matPadreNombre.trim() || null,
+        padreDpi: limpiarDPI(f.matPadreDpi) || null,
+        padreTelefono: limpiarTelefono(f.matPadreTelefono) || null,
       };
     }
     try {
@@ -797,6 +836,32 @@ export function RegistroPage({ onVerExpediente }) {
               {mensajeIngreso && <Banner tone={mensajeIngreso.tone}>{mensajeIngreso.texto}</Banner>}
 
               <div>
+                <div className="font-semibold text-sm mb-1" style={{ color: COLORS.navy }}>Datos de identificación</div>
+                <p className="text-[11px] mb-3" style={{ color: "#999" }}>
+                  Aquí se corrigen los datos básicos si se digitaron mal (o si el lector del escáner se equivocó). Cambiar la
+                  historia clínica solo es necesario si no coincide con la del papel; debe ser única.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+                  <FormField label="Nombre completo">
+                    <TextInput value={ingresoForm.idNombre} onChange={(e) => setCampoIngreso("idNombre", e.target.value)} />
+                  </FormField>
+                  <FormField label="DPI / CUI">
+                    <TextInput value={formatearDPI(ingresoForm.idDpi)} onChange={(e) => setCampoIngreso("idDpi", limpiarDPI(e.target.value))} placeholder="0000 00000 0000" inputMode="numeric" />
+                  </FormField>
+                  <FormField label="Historia clínica">
+                    <TextInput value={ingresoForm.idHistoria} maxLength={40} onChange={(e) => setCampoIngreso("idHistoria", e.target.value)} />
+                  </FormField>
+                  <FormField label="Dirección">
+                    <TextInput value={ingresoForm.idDireccion} onChange={(e) => setCampoIngreso("idDireccion", e.target.value)} />
+                  </FormField>
+                  <FormField label="Teléfono">
+                    <TextInput value={formatearTelefono(ingresoForm.idTelefono)} onChange={(e) => setCampoIngreso("idTelefono", limpiarTelefono(e.target.value))} placeholder="0000 0000" inputMode="numeric" />
+                  </FormField>
+                  <FormField label="Fecha de nacimiento">
+                    <TextInput type="date" value={ingresoForm.idFechaNacimiento} onChange={(e) => setCampoIngreso("idFechaNacimiento", e.target.value)} />
+                  </FormField>
+                </div>
+
                 <div className="font-semibold text-sm mb-3" style={{ color: COLORS.navy }}>Datos generales</div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-2">
                   <FormField label="Tipo de sangre">
@@ -898,6 +963,26 @@ export function RegistroPage({ onVerExpediente }) {
                   </FormField>
                   <FormField label="Condición de egreso del bebé">
                     <TextInput value={ingresoForm.matCondicion} onChange={(e) => setCampoIngreso("matCondicion", e.target.value)} />
+                  </FormField>
+                  <FormField label="Nombre del bebé (si ya tiene)">
+                    <TextInput value={ingresoForm.matBebeNombre} onChange={(e) => setCampoIngreso("matBebeNombre", e.target.value)} />
+                  </FormField>
+                </div>
+
+                <div className="font-semibold text-xs mt-4 mb-2" style={{ color: "#666" }}>Padres del bebé</div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <FormField label="Madre (la paciente)">
+                    <TextInput disabled value={pacienteDetalle ? `${pacienteDetalle.nombreCompleto} · DPI ${pacienteDetalle.dpi}` : ""} readOnly />
+                    <p className="text-[11px] mt-1" style={{ color: "#999" }}>Ya está registrada: sus datos se toman de su ficha.</p>
+                  </FormField>
+                  <FormField label="Nombre del padre">
+                    <TextInput value={ingresoForm.matPadreNombre} onChange={(e) => setCampoIngreso("matPadreNombre", e.target.value)} />
+                  </FormField>
+                  <FormField label="DPI del padre (opcional)">
+                    <TextInput value={formatearDPI(ingresoForm.matPadreDpi)} onChange={(e) => setCampoIngreso("matPadreDpi", limpiarDPI(e.target.value))} placeholder="0000 00000 0000" inputMode="numeric" />
+                  </FormField>
+                  <FormField label="Teléfono del padre (opcional)">
+                    <TextInput value={formatearTelefono(ingresoForm.matPadreTelefono)} onChange={(e) => setCampoIngreso("matPadreTelefono", limpiarTelefono(e.target.value))} placeholder="0000 0000" inputMode="numeric" />
                   </FormField>
                 </div>
               </div>

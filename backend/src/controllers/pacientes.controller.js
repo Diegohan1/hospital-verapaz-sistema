@@ -65,12 +65,19 @@ function tomarCampos(body) {
 }
 
 // Sprint 3: validacion de entradas obligatorias y formatos.
-// exigirDpi=false (edicion): el DPI no es obligatorio reenviarlo, pero si
-// viene en el body igual se le exige el formato de 13 digitos — antes se
-// omitia la validacion completa (dejaba guardar un DPI invalido).
-function validarPaciente(body, { exigirDpi = true } = {}) {
-  if (!body.nombreCompleto?.trim()) return "nombreCompleto es requerido";
-  if (exigirDpi && !body.dpi?.trim()) return "dpi es requerido";
+//
+// esEdicion=true (PUT): es una actualizacion PARCIAL — la pestaña
+// "Ingreso / Egreso" solo manda los campos que edita, sin nombre ni DPI. Por
+// eso ahi nombre y DPI no son obligatorios reenviarlos; pero si vienen, se
+// validan igual (nombre no vacio, DPI de 13 digitos). Antes se exigia el
+// nombre siempre y guardar ingreso/egreso/maternidad respondia 400.
+function validarPaciente(body, { esEdicion = false } = {}) {
+  if (esEdicion) {
+    if (body.nombreCompleto !== undefined && !String(body.nombreCompleto ?? "").trim()) return "El nombre no puede quedar vacío";
+  } else {
+    if (!body.nombreCompleto?.trim()) return "nombreCompleto es requerido";
+    if (!body.dpi?.trim()) return "dpi es requerido";
+  }
   if (body.dpi != null && body.dpi !== "" && !/^\d{13}$/.test(String(body.dpi).trim())) {
     return "El DPI debe tener 13 dígitos";
   }
@@ -80,8 +87,24 @@ function validarPaciente(body, { exigirDpi = true } = {}) {
   if (body.telefonoEmergencia != null && body.telefonoEmergencia !== "" && !/^\d{8}$/.test(String(body.telefonoEmergencia).trim())) {
     return "El teléfono de emergencia debe tener 8 dígitos";
   }
+  if (body.encargadoTelefono != null && body.encargadoTelefono !== "" && !/^\d{8}$/.test(String(body.encargadoTelefono).trim())) {
+    return "El teléfono del encargado debe tener 8 dígitos";
+  }
   if (body.edad != null && body.edad !== "" && (body.edad < 0 || body.edad > 130)) {
     return "La edad debe estar entre 0 y 130 años";
+  }
+  return null;
+}
+
+// Datos del nacimiento: el DPI y telefono del padre son opcionales, pero si
+// vienen deben tener formato valido (el recien nacido puede no tener DPI/CUI).
+function validarMaternidad(m) {
+  if (!m) return null;
+  if (m.padreDpi != null && m.padreDpi !== "" && !/^\d{13}$/.test(String(m.padreDpi).trim())) {
+    return "El DPI del padre debe tener 13 dígitos";
+  }
+  if (m.padreTelefono != null && m.padreTelefono !== "" && !/^\d{8}$/.test(String(m.padreTelefono).trim())) {
+    return "El teléfono del padre debe tener 8 dígitos";
   }
   return null;
 }
@@ -332,12 +355,25 @@ export async function crear(req, res) {
 export async function actualizar(req, res) {
   const id = Number(req.params.id);
 
-  const errorValidacion = validarPaciente(req.body, { exigirDpi: false });
+  const errorValidacion = validarPaciente(req.body, { esEdicion: true }) || validarMaternidad(req.body.maternidad);
   if (errorValidacion) return res.status(400).json({ error: errorValidacion });
+
+  // Dev-Mari: corregir la historia clinica (p. ej. un numero mal copiado del
+  // papel). Es un identificador: unico y nunca vacio.
+  const datosPaciente = tomarCampos(req.body);
+  if (typeof req.body.historiaClinica === "string" && req.body.historiaClinica.trim()) {
+    const historia = req.body.historiaClinica.trim();
+    if (historia.length > 40) return res.status(400).json({ error: "La historia clínica no puede exceder 40 caracteres" });
+    const otra = await prisma.paciente.findUnique({ where: { historiaClinica: historia }, select: { id: true, nombreCompleto: true } });
+    if (otra && otra.id !== id) {
+      return res.status(409).json({ error: `La historia clínica "${historia}" ya está asignada a otro paciente (${otra.nombreCompleto})` });
+    }
+    datosPaciente.historiaClinica = historia;
+  }
 
   try {
     const paciente = await prisma.$transaction(async (tx) => {
-      const actual = await tx.paciente.update({ where: { id }, data: tomarCampos(req.body), select: SELECT_LISTADO });
+      const actual = await tx.paciente.update({ where: { id }, data: datosPaciente, select: SELECT_LISTADO });
 
       const payloadEgreso = tomarEgresoClinico(req.body);
       if (payloadEgreso !== null || req.body.egresoClinico === null) {
@@ -367,6 +403,10 @@ export async function actualizar(req, res) {
           hora: m.hora,
           sexo: m.sexo,
           condicionEgresoBebe: m.condicionEgresoBebe,
+          bebeNombre: m.bebeNombre,
+          padreNombre: m.padreNombre,
+          padreDpi: m.padreDpi,
+          padreTelefono: m.padreTelefono,
         };
         await tx.registroMaternidad.upsert({
           where: { pacienteId: id },

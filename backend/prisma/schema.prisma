@@ -248,6 +248,15 @@ model RegistroMaternidad {
   sexo              String?
   condicionEgresoBebe String?
 
+  // Dev-Mari: datos del bebe y de sus padres al registrar el nacimiento. La
+  // madre es la propia paciente (ya esta registrada); del padre no hay
+  // registro previo, por eso se captura aqui. Todo opcional: el recien
+  // nacido puede no tener nombre ni DPI/CUI al momento del parto.
+  bebeNombre        String?
+  padreNombre       String?
+  padreDpi          String?
+  padreTelefono     String?
+
   paciente Paciente @relation(fields: [pacienteId], references: [id])
 }
 

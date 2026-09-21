@@ -39,7 +39,7 @@ export function FichaPacienteImprimible({
   const causaMuerte = eg.causaMuerte ?? p.causaMuerte;
 
   const tieneEgreso = p.fechaEgreso || p.condicionEgreso || diagnosticoEgreso || complicaciones || operaciones || causaMuerte;
-  const tieneMaternidad = p.maternidad && (p.maternidad.numeroHijo || p.maternidad.fecha || p.maternidad.sexo || p.maternidad.condicionEgresoBebe);
+  const tieneMaternidad = p.maternidad && (p.maternidad.numeroHijo || p.maternidad.fecha || p.maternidad.sexo || p.maternidad.condicionEgresoBebe || p.maternidad.bebeNombre || p.maternidad.padreNombre);
   const tieneEmergencia = p.contactoEmergencia || p.telefonoEmergencia || p.parentesco;
   const tieneEncargado = p.encargadoNombre || p.encargadoTelefono;
   // Fecha escrita en el papel (la mas antigua si hubiera varios documentos)
@@ -149,6 +149,12 @@ export function FichaPacienteImprimible({
             <FichaCampo label="Hora" valor={p.maternidad.hora} />
             <FichaCampo label="Sexo" valor={p.maternidad.sexo} />
             <FichaCampo label="Condición de egreso del bebé" valor={p.maternidad.condicionEgresoBebe} colSpan={4} />
+            <FichaCampo label="Nombre del bebé" valor={p.maternidad.bebeNombre} colSpan={2} />
+            {/* La madre es la propia paciente: se toma de su ficha */}
+            <FichaCampo label="Madre" valor={`${p.nombreCompleto}${p.dpi ? ` — DPI ${p.dpi}` : ""}`} colSpan={2} />
+            <FichaCampo label="Padre" valor={p.maternidad.padreNombre} colSpan={2} />
+            <FichaCampo label="DPI del padre" valor={p.maternidad.padreDpi} />
+            <FichaCampo label="Teléfono del padre" valor={p.maternidad.padreTelefono} />
           </div>
         </FichaSeccion>
       )}
