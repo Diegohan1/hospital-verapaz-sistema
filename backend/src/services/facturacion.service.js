@@ -4,6 +4,7 @@
 // Sprint 6: los totales monetarios se redondean a 2 decimales antes de
 // persistirse, para evitar arrastres de coma flotante en los reportes.
 import { prisma } from "../config/prisma.js";
+import { rangoFecha } from "../utils/periodos.util.js";
 
 function round2(valor) {
   return Number(valor.toFixed(2));
@@ -101,10 +102,8 @@ export async function registrarVentaFarmacia({ pacienteId, items, registradoPor 
 
 // RF-21: reporte financiero consolidado (hospital + farmacia, por separado y en conjunto)
 export async function reporteConsolidado({ desde, hasta } = {}) {
-  const rangoFecha = {};
-  if (desde) rangoFecha.gte = new Date(desde);
-  if (hasta) rangoFecha.lte = new Date(hasta);
-  const where = Object.keys(rangoFecha).length ? { creadoEn: rangoFecha } : undefined;
+  const rango = rangoFecha(desde, hasta);
+  const where = rango ? { creadoEn: rango } : undefined;
 
   const [facturasHospital, facturasFarmacia] = await Promise.all([
     prisma.facturaHospital.findMany({ where }),
