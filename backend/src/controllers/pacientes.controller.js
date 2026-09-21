@@ -188,8 +188,19 @@ export async function listar(req, res) {
   // lista completa (tope 50) igual que antes.
   if (req.query.page) {
     const { page, pageSize, skip, take } = leerPaginacion(req);
+    // Dev-Mari: junto a la fecha de registro en el sistema (creadoEn), la
+    // fecha escrita en el papel del expediente escaneado (si hay uno).
+    const selectConFechaPapel = {
+      ...SELECT_LISTADO,
+      documentos: {
+        where: { eliminadoEn: null, fechaDocumentoOriginal: { not: null } },
+        orderBy: { fechaDocumentoOriginal: "asc" },
+        take: 1,
+        select: { fechaDocumentoOriginal: true },
+      },
+    };
     const [items, total] = await Promise.all([
-      prisma.paciente.findMany({ where, orderBy: { creadoEn: "desc" }, skip, take, select: SELECT_LISTADO }),
+      prisma.paciente.findMany({ where, orderBy: { creadoEn: "desc" }, skip, take, select: selectConFechaPapel }),
       prisma.paciente.count({ where }),
     ]);
     return res.json({ items, total, page, pageSize });

@@ -24,6 +24,7 @@ import { Cie10Input } from "../components/Cie10Input";
 import { formatearDPI, limpiarDPI, validarDPI } from "../utils/dpi";
 import { formatearTelefono, limpiarTelefono, telefonoIncompleto } from "../utils/telefono";
 import { COLORS } from "../styles/tokens";
+import { fechaDia, fechaLocal } from "../utils/fechas";
 
 const OTRO = "__otro__";
 
@@ -58,7 +59,7 @@ const OPCIONES_LUGAR = DEPARTAMENTOS_GUATEMALA.flatMap((d) =>
 );
 
 const CAMPOS_VACIOS = {
-  nombreCompleto: "", dpi: "", historiaClinica: "", fechaIngreso: "", direccion: "", lugarNacimiento: "", fechaNacimiento: "",
+  nombreCompleto: "", dpi: "", historiaClinica: "", fechaIngreso: "", horaIngreso: "", direccion: "", lugarNacimiento: "", fechaNacimiento: "",
   telefono: "", edad: "", sexo: "", tipoSangre: "", estadoCivil: "", ocupacion: "", religion: "",
   nacionalidad: "", nombreConyuge: "", nombrePadre: "", nombreMadre: "",
   contactoEmergencia: "", telefonoEmergencia: "", parentesco: "",
@@ -343,12 +344,14 @@ export function RegistroPage({ onVerExpediente }) {
         ...form,
         edad: form.edad ? Number(form.edad) : undefined,
         fechaNacimiento: form.fechaNacimiento || undefined,
-        // Mediodia local: un "YYYY-MM-DD" a secas se interpreta como medianoche
-        // UTC y en Guatemala (UTC-6) se veria como el dia anterior.
-        fechaIngreso: form.fechaIngreso ? new Date(`${form.fechaIngreso}T12:00:00`).toISOString() : undefined,
+        // Fecha + hora locales del ingreso. Sin hora se usa mediodia: un
+        // "YYYY-MM-DD" a secas seria medianoche UTC y en Guatemala (UTC-6) se
+        // veria como el dia anterior.
+        fechaIngreso: form.fechaIngreso ? new Date(`${form.fechaIngreso}T${form.horaIngreso || "12:00"}:00`).toISOString() : undefined,
         historiaClinica: form.historiaClinica.trim() || undefined,
         medicoReferenteId: form.medicoReferenteId ? Number(form.medicoReferenteId) : undefined,
       };
+      delete datosPaciente.horaIngreso; // solo sirve para armar fechaIngreso
 
       let paciente;
       if (documentoPendiente) {
@@ -360,7 +363,10 @@ export function RegistroPage({ onVerExpediente }) {
         }
         fd.append("documento", new File([documentoPendiente.blob], documentoPendiente.nombre, { type: "application/pdf" }));
         fd.append("paginas", String(documentoPendiente.paginas));
-        if (documentoPendiente.fechaDocumentoOriginal) fd.append("fechaDocumentoOriginal", documentoPendiente.fechaDocumentoOriginal);
+        // La fecha del papel es la que el doctor anoto como fecha de ingreso:
+        // si no se capturo aparte, se usa esa.
+        const fechaPapel = documentoPendiente.fechaDocumentoOriginal || form.fechaIngreso;
+        if (fechaPapel) fd.append("fechaDocumentoOriginal", fechaPapel);
         paciente = await api.post("/pacientes", fd);
       } else {
         paciente = await api.post("/pacientes", datosPaciente);
@@ -475,6 +481,12 @@ export function RegistroPage({ onVerExpediente }) {
             <FormField label="Fecha de ingreso">
               <TextInput type="date" value={form.fechaIngreso} onChange={(e) => setCampo("fechaIngreso", e.target.value)} />
               {avisoOCR("fechaIngreso")}
+            </FormField>
+            <FormField label="Hora de ingreso (opcional)">
+              <TextInput type="time" value={form.horaIngreso} onChange={(e) => setCampo("horaIngreso", e.target.value)} />
+              {form.fechaIngreso && !form.horaIngreso && (
+                <p className="text-[11px] mt-1" style={{ color: "#999" }}>Sin hora, se guarda solo la fecha (12:00 como referencia).</p>
+              )}
             </FormField>
 
             {/* Datos opcionales: al escanear un expediente ya llenado por el doctor
@@ -908,7 +920,7 @@ export function RegistroPage({ onVerExpediente }) {
           </div>
           {pacientesLista.error && <Banner tone="error">{pacientesLista.error}</Banner>}
           <Table
-            headers={["Historia clínica", "Nombre", "DPI", "Edad", "Sexo", "Sangre", ""]}
+            headers={["Historia clínica", "Nombre", "DPI", "Edad", "Sexo", "Sangre", "Fechas de registro", ""]}
             rows={pacientesLista.loading ? [] : pacientesLista.items}
             emptyMessage={pacientesLista.loading ? "Cargando…" : "No hay pacientes registrados."}
             renderRow={(p) => (
@@ -919,6 +931,12 @@ export function RegistroPage({ onVerExpediente }) {
                 <td className="px-4 py-3">{p.edad ?? "—"}</td>
                 <td className="px-4 py-3">{p.sexo ?? "—"}</td>
                 <td className="px-4 py-3">{p.tipoSangre ?? "—"}</td>
+                <td className="px-4 py-3 text-xs leading-5" style={{ color: "#555" }}>
+                  <div><span style={{ color: "#999" }}>En el sistema:</span> {fechaLocal(p.creadoEn) || "—"}</div>
+                  {p.documentos?.[0]?.fechaDocumentoOriginal && (
+                    <div><span style={{ color: "#999" }}>En el papel:</span> {fechaDia(p.documentos[0].fechaDocumentoOriginal)}</div>
+                  )}
+                </td>
                 <td className="px-4 py-3">
                   <button className="text-xs font-semibold" style={{ color: COLORS.navy }} onClick={() => onVerExpediente(p.id)}>
                     Ver expediente →
