@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Printer, Camera, FileText, Download, Trash2, Smartphone, Eye, ChevronDown, ChevronUp } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
 import { Card } from "../components/Card";
@@ -289,6 +289,10 @@ export function RegistroPage({ onVerExpediente }) {
     setMensajeDocumento(mensaje);
   }
 
+  // Vista previa incrustada del PDF escaneado (se libera al cambiar o quitar).
+  const urlVistaPrevia = useMemo(() => (documentoPendiente?.blob ? URL.createObjectURL(documentoPendiente.blob) : null), [documentoPendiente?.blob]);
+  useEffect(() => () => { if (urlVistaPrevia) URL.revokeObjectURL(urlVistaPrevia); }, [urlVistaPrevia]);
+
   function quitarDocumentoPendiente() {
     setDocumentoPendiente(null);
     setMensajeDocumento(null);
@@ -464,6 +468,88 @@ export function RegistroPage({ onVerExpediente }) {
           Pacientes registrados
         </button>
       </div>
+
+      {/* Dev-Mari: escaneo del expediente fisico ANTES de registrar al
+          paciente — ya no depende de tener uno seleccionado. Util cuando el
+          doctor ya lo lleno a mano en papel: se escanea, el sistema intenta
+          leer los datos basicos y autorellenar el formulario de abajo, y el
+          PDF se adjunta al guardar. El escaneo es opcional: tambien se puede
+          seguir llenando el formulario a mano sin escanear nada. */}
+      {tab === "nuevo" && puedeRegistrar && puedeVerDocumentos && (
+        <Card style={{ marginBottom: 16 }}>
+          <div className="font-semibold text-sm mb-1">Escanear expediente físico (opcional)</div>
+          <p className="text-xs mb-4" style={{ color: "#888" }}>
+            Si el doctor ya llenó el expediente en papel, escanéelo aquí antes de registrar: el sistema genera el PDF
+            automáticamente y trata de leer nombre, DPI, historia clínica, dirección, teléfono y fechas para autorellenar el formulario de abajo
+            (siempre revisable). El PDF original queda guardado tal cual, sin alterar la letra ni la firma del doctor,
+            y se adjunta al paciente al hacer clic en "Guardar paciente".
+          </p>
+
+          {lecturaAvanzada?.disponible && (
+            <p className="text-xs mb-3 font-semibold" style={{ color: COLORS.gold }}>
+              Lectura avanzada activa: para leer la letra a mano, la imagen de la primera página del expediente se envía a un
+              servicio externo (Anthropic) únicamente para extraer estos datos.
+            </p>
+          )}
+
+          {mensajeDocumento && <Banner tone={mensajeDocumento.tone}>{mensajeDocumento.texto}</Banner>}
+
+          {!documentoPendiente ? (
+            <div className="flex gap-2 flex-wrap">
+              <Button onClick={() => setEscanerAbierto(true)}>
+                <span className="flex items-center gap-1.5"><Camera size={15} /> Escanear en esta computadora</span>
+              </Button>
+              <Button variant="secondary" onClick={() => setEscaneoQRAbierto(true)}>
+                <span className="flex items-center gap-1.5"><Smartphone size={15} /> Escanear con el teléfono</span>
+              </Button>
+            </div>
+          ) : (
+            <div className="flex items-end gap-3 justify-between flex-wrap">
+              <span className="flex items-center gap-2 min-w-0 text-sm">
+                <FileText size={15} style={{ color: COLORS.navy }} className="shrink-0" />
+                <span className="font-semibold">{documentoPendiente.nombre}</span>
+                <span className="text-xs" style={{ color: "#999" }}>
+                  {documentoPendiente.paginas} pág. — se adjuntará al guardar el paciente
+                </span>
+              </span>
+              <FormField label="Fecha en el documento (papel)">
+                <TextInput
+                  type="date"
+                  value={documentoPendiente.fechaDocumentoOriginal}
+                  onChange={(e) => setDocumentoPendiente((d) => ({ ...d, fechaDocumentoOriginal: e.target.value }))}
+                />
+                <p className="text-[11px] mt-1" style={{ color: "#999" }}>Distinta de la fecha de registro en el sistema, que se guarda sola.</p>
+              </FormField>
+              <span className="flex gap-1">
+                <button onClick={verDocumentoPendiente} className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-lg" style={{ color: COLORS.navy }}>
+                  <Eye size={13} /> Ver documento
+                </button>
+                <button onClick={quitarDocumentoPendiente} className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-lg" style={{ color: COLORS.red }}>
+                  <Trash2 size={13} /> Quitar escaneo
+                </button>
+              </span>
+            </div>
+          )}
+
+          {urlVistaPrevia && (
+            <iframe title="Vista previa del expediente escaneado" src={urlVistaPrevia} className="w-full mt-3 rounded-lg" style={{ height: 420, border: `1px solid ${COLORS.border}` }} />
+          )}
+
+          {documentoPendiente && ocrDetalle && (
+            <details className="mt-3 text-xs" style={{ color: "#888" }}>
+              <summary className="cursor-pointer font-semibold">Ver cómo se leyó el documento (diagnóstico)</summary>
+              <p className="mt-2">Lector usado: <strong>{ocrDetalle.fuente === "ia" ? "lectura avanzada (modelo de visión)" : "lector local (Tesseract)"}</strong></p>
+              {ocrDetalle.avisoIA && <p className="mt-1" style={{ color: COLORS.gold }}>Lectura avanzada no disponible: {ocrDetalle.avisoIA}</p>}
+              {ocrDetalle.error && <p className="mt-1" style={{ color: COLORS.red }}>Error del lector: {ocrDetalle.error}</p>}
+              {ocrDetalle.fuente !== "ia" && (
+                <pre className="whitespace-pre-wrap mt-2 p-2 rounded-lg overflow-auto" style={{ backgroundColor: "#f6f6f6", maxHeight: 220 }}>
+                  {ocrDetalle.texto || "(no se leyó ningún texto)"}
+                </pre>
+              )}
+            </details>
+          )}
+        </Card>
+      )}
 
       {tab === "nuevo" && puedeRegistrar ? (
         <Card>
@@ -736,85 +822,6 @@ export function RegistroPage({ onVerExpediente }) {
           </form>
         </Card>
       ) : null}
-
-      {/* Dev-Mari: escaneo del expediente fisico ANTES de registrar al
-          paciente — ya no depende de tener uno seleccionado. Util cuando el
-          doctor ya lo lleno a mano en papel: se escanea, el sistema intenta
-          leer los datos basicos y autorellenar el formulario de abajo, y el
-          PDF se adjunta al guardar. El escaneo es opcional: tambien se puede
-          seguir llenando el formulario a mano sin escanear nada. */}
-      {tab === "nuevo" && puedeRegistrar && puedeVerDocumentos && (
-        <Card style={{ marginTop: 16 }}>
-          <div className="font-semibold text-sm mb-1">Escanear expediente físico (opcional)</div>
-          <p className="text-xs mb-4" style={{ color: "#888" }}>
-            Si el doctor ya llenó el expediente en papel, escanéelo aquí antes de registrar: el sistema genera el PDF
-            automáticamente y trata de leer nombre, DPI, historia clínica, dirección, teléfono y fechas para autorellenar el formulario de abajo
-            (siempre revisable). El PDF original queda guardado tal cual, sin alterar la letra ni la firma del doctor,
-            y se adjunta al paciente al hacer clic en "Guardar paciente".
-          </p>
-
-          {lecturaAvanzada?.disponible && (
-            <p className="text-xs mb-3 font-semibold" style={{ color: COLORS.gold }}>
-              Lectura avanzada activa: para leer la letra a mano, la imagen de la primera página del expediente se envía a un
-              servicio externo (Anthropic) únicamente para extraer estos datos.
-            </p>
-          )}
-
-          {mensajeDocumento && <Banner tone={mensajeDocumento.tone}>{mensajeDocumento.texto}</Banner>}
-
-          {!documentoPendiente ? (
-            <div className="flex gap-2 flex-wrap">
-              <Button onClick={() => setEscanerAbierto(true)}>
-                <span className="flex items-center gap-1.5"><Camera size={15} /> Escanear en esta computadora</span>
-              </Button>
-              <Button variant="secondary" onClick={() => setEscaneoQRAbierto(true)}>
-                <span className="flex items-center gap-1.5"><Smartphone size={15} /> Escanear con el teléfono</span>
-              </Button>
-            </div>
-          ) : (
-            <div className="flex items-end gap-3 justify-between flex-wrap">
-              <span className="flex items-center gap-2 min-w-0 text-sm">
-                <FileText size={15} style={{ color: COLORS.navy }} className="shrink-0" />
-                <span className="font-semibold">{documentoPendiente.nombre}</span>
-                <span className="text-xs" style={{ color: "#999" }}>
-                  {documentoPendiente.paginas} pág. — se adjuntará al guardar el paciente
-                </span>
-              </span>
-              <FormField label="Fecha en el documento (papel)">
-                <TextInput
-                  type="date"
-                  value={documentoPendiente.fechaDocumentoOriginal}
-                  onChange={(e) => setDocumentoPendiente((d) => ({ ...d, fechaDocumentoOriginal: e.target.value }))}
-                />
-                <p className="text-[11px] mt-1" style={{ color: "#999" }}>Distinta de la fecha de registro en el sistema, que se guarda sola.</p>
-              </FormField>
-              <span className="flex gap-1">
-                <button onClick={verDocumentoPendiente} className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-lg" style={{ color: COLORS.navy }}>
-                  <Eye size={13} /> Ver documento
-                </button>
-                <button onClick={quitarDocumentoPendiente} className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-lg" style={{ color: COLORS.red }}>
-                  <Trash2 size={13} /> Quitar escaneo
-                </button>
-              </span>
-            </div>
-          )}
-
-          {documentoPendiente && ocrDetalle && (
-            <details className="mt-3 text-xs" style={{ color: "#888" }}>
-              <summary className="cursor-pointer font-semibold">Ver cómo se leyó el documento (diagnóstico)</summary>
-              <p className="mt-2">Lector usado: <strong>{ocrDetalle.fuente === "ia" ? "lectura avanzada (modelo de visión)" : "lector local (Tesseract)"}</strong></p>
-              {ocrDetalle.avisoIA && <p className="mt-1" style={{ color: COLORS.gold }}>Lectura avanzada no disponible: {ocrDetalle.avisoIA}</p>}
-              {ocrDetalle.error && <p className="mt-1" style={{ color: COLORS.red }}>Error del lector: {ocrDetalle.error}</p>}
-              {ocrDetalle.fuente !== "ia" && (
-                <pre className="whitespace-pre-wrap mt-2 p-2 rounded-lg overflow-auto" style={{ backgroundColor: "#f6f6f6", maxHeight: 220 }}>
-                  {ocrDetalle.texto || "(no se leyó ningún texto)"}
-                </pre>
-              )}
-            </details>
-          )}
-        </Card>
-      )}
-
       {tab === "ingreso" && puedeRegistrar ? (
         <Card>
           <p className="text-xs font-semibold mb-4" style={{ color: "#888" }}>
