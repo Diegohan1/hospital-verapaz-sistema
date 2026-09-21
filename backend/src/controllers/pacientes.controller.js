@@ -247,6 +247,20 @@ export async function crear(req, res) {
   const errorEgreso = validarEgresoClinico(payloadEgreso, req.body.condicionEgreso);
   if (errorEgreso) return res.status(422).json({ error: errorEgreso });
 
+  // Dev-Mari: la hoja fisica ya trae una "Historia Clinica" escrita a mano.
+  // Si se captura (al escanear un expediente existente), se respeta ese
+  // numero tal cual; solo si viene vacia el sistema genera una (RF-03).
+  const historiaManual = typeof req.body.historiaClinica === "string" ? req.body.historiaClinica.trim() : "";
+  if (historiaManual) {
+    if (historiaManual.length > 40) {
+      return res.status(400).json({ error: "La historia clínica no puede exceder 40 caracteres" });
+    }
+    const repetida = await prisma.paciente.findUnique({ where: { historiaClinica: historiaManual }, select: { id: true, nombreCompleto: true } });
+    if (repetida) {
+      return res.status(409).json({ error: `La historia clínica "${historiaManual}" ya está asignada a otro paciente (${repetida.nombreCompleto})` });
+    }
+  }
+
   // El PDF se valida antes de tocar la base de datos: si no es un PDF
   // valido, no tiene sentido crear el paciente sin su respaldo escaneado.
   if (req.file) {
@@ -256,14 +270,16 @@ export async function crear(req, res) {
 
   const paciente = await prisma.$transaction(async (tx) => {
     const creado = await tx.paciente.create({
-      data: { ...tomarCampos(req.body), historiaClinica: `PENDIENTE-${Date.now()}` },
+      data: { ...tomarCampos(req.body), historiaClinica: historiaManual || `PENDIENTE-${Date.now()}` },
       select: SELECT_LISTADO,
     });
-    const conHistoria = await tx.paciente.update({
-      where: { id: creado.id },
-      data: { historiaClinica: generarHistoriaClinica(creado.id) },
-      select: SELECT_LISTADO,
-    });
+    const conHistoria = historiaManual
+      ? creado
+      : await tx.paciente.update({
+          where: { id: creado.id },
+          data: { historiaClinica: generarHistoriaClinica(creado.id) },
+          select: SELECT_LISTADO,
+        });
     if (payloadEgreso && Object.keys(payloadEgreso).length) {
       const { encrypted, iv, authTag } = encrypt(JSON.stringify(payloadEgreso), ENCRYPTION_KEY);
       await tx.egresoClinico.create({ data: { pacienteId: creado.id, textoCifrado: encrypted, iv, authTag } });
