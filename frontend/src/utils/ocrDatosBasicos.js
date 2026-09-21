@@ -17,6 +17,7 @@
 // que el personal lo revise.
 import { createWorker } from "tesseract.js";
 import { api } from "../services/api.js";
+import { validarDPI } from "./dpi.js";
 
 // Etiquetas de la hoja (tolerantes a acentos/mayusculas y a los errores
 // tipicos del OCR). Se usan tanto para ubicar un campo como para saber donde
@@ -99,6 +100,8 @@ export function parsearFecha(texto) {
   if (dia < 1 || dia > 31 || mes < 1 || mes > 12) return null;
   const anio = Number(y);
   if (anio < 1900 || anio > new Date().getFullYear() + 1) return null;
+  // El dia debe existir en ese mes (31/02 no existe: Date lo corre a marzo)
+  if (new Date(Date.UTC(anio, mes - 1, dia)).getUTCMonth() !== mes - 1) return null;
   return `${y}-${String(mes).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
 }
 
@@ -153,7 +156,10 @@ export function extraerCampos(textoCrudo) {
   }
 
   const fechaNacimiento = parsearFecha(valorTrasEtiqueta(lineas, ETIQUETAS.fechaNacimiento));
-  const fechaIngreso = parsearFecha(valorTrasEtiqueta(lineas, ETIQUETAS.fechaIngreso));
+  // "FECHA DE INGRESO" esta en el encabezado, ARRIBA del titulo de la ficha:
+  // se busca en todo el texto (el recorte por titulo solo aplica a los datos
+  // del paciente, para no tomar el telefono/direccion del membrete).
+  const fechaIngreso = parsearFecha(valorTrasEtiqueta(todas, ETIQUETAS.fechaIngreso));
 
   return { nombreCompleto, direccion, dpi, telefono, historiaClinica, fechaNacimiento, fechaIngreso };
 }
@@ -179,13 +185,21 @@ function votar(candidatos) {
 export function combinar({ textos = [], dpiLecturas = [], telefonoLecturas = [] }) {
   const porTexto = textos.map(extraerCampos);
   const primero = (campo) => porTexto.map((c) => c[campo]).find(Boolean) || null;
+
+  // DPI: el numero de CUI trae un digito verificador; una lectura con un
+  // digito mal casi nunca lo pasa. Entre las lecturas se prefieren las que si
+  // lo pasan; solo si ninguna lo pasa se vota entre todas (el formulario
+  // marcara el DPI como invalido y el personal lo corrige).
+  const candidatosDpi = [...dpiLecturas, ...porTexto.map((c) => c.dpi).filter(Boolean)];
+  const dpiConVerificador = candidatosDpi.filter((d) => validarDPI(d).estado === "valido");
+
   return {
     nombreCompleto: primero("nombreCompleto"),
     direccion: primero("direccion"),
     historiaClinica: primero("historiaClinica"),
     fechaNacimiento: primero("fechaNacimiento"),
     fechaIngreso: primero("fechaIngreso"),
-    dpi: votar([...dpiLecturas, ...porTexto.map((c) => c.dpi).filter(Boolean)]),
+    dpi: votar(dpiConVerificador.length ? dpiConVerificador : candidatosDpi),
     telefono: votar([...telefonoLecturas, ...porTexto.map((c) => c.telefono).filter(Boolean)]),
   };
 }

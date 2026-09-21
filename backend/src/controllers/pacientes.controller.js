@@ -71,7 +71,7 @@ function tomarCampos(body) {
 // eso ahi nombre y DPI no son obligatorios reenviarlos; pero si vienen, se
 // validan igual (nombre no vacio, DPI de 13 digitos). Antes se exigia el
 // nombre siempre y guardar ingreso/egreso/maternidad respondia 400.
-function validarPaciente(body, { esEdicion = false } = {}) {
+export function validarPaciente(body, { esEdicion = false } = {}) {
   if (esEdicion) {
     if (body.nombreCompleto !== undefined && !String(body.nombreCompleto ?? "").trim()) return "El nombre no puede quedar vacío";
   } else {
@@ -98,7 +98,7 @@ function validarPaciente(body, { esEdicion = false } = {}) {
 
 // Datos del nacimiento: el DPI y telefono del padre son opcionales, pero si
 // vienen deben tener formato valido (el recien nacido puede no tener DPI/CUI).
-function validarMaternidad(m) {
+export function validarMaternidad(m) {
   if (!m) return null;
   if (m.padreDpi != null && m.padreDpi !== "" && !/^\d{13}$/.test(String(m.padreDpi).trim())) {
     return "El DPI del padre debe tener 13 dígitos";

@@ -12,29 +12,46 @@ import { encryptBuffer } from "./crypto.util.js";
 
 // Tipos autorizados por configuracion (PDF, PNG, JPG por defecto)
 const TIPOS_DEFAULT = ["application/pdf", "image/png", "image/jpeg"];
+// Extensiones que corresponden a cada tipo (un JPEG puede llamarse .jpg o
+// .jpeg; los celulares guardan ambas).
 const EXTENSIONES = {
-  "application/pdf": ".pdf",
-  "image/png": ".png",
-  "image/jpeg": ".jpg",
+  "application/pdf": [".pdf"],
+  "image/png": [".png"],
+  "image/jpeg": [".jpg", ".jpeg"],
 };
+
+// Primeros bytes que identifican cada formato (firma del archivo)
+function firmaCoincide(mimetype, buffer) {
+  if (!buffer || buffer.length < 8) return false;
+  if (mimetype === "application/pdf") return buffer.subarray(0, 5).toString("latin1") === "%PDF-";
+  if (mimetype === "image/png") return buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+  if (mimetype === "image/jpeg") return buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+  return true; // tipo configurado por el hospital sin firma conocida: solo se valida MIME y extension
+}
 
 export function tiposPermitidos() {
   const raw = process.env.UPLOAD_TIPOS_PERMITIDOS;
   return raw ? raw.split(",").map((t) => t.trim()).filter(Boolean) : TIPOS_DEFAULT;
 }
 
-// Valida extension y MIME contra la lista de permitidos. El cliente puede
-// falsificar el MIME, por eso tambien se valida la extension y nunca se usa
+// Valida MIME, extension y contenido. Ni el nombre ni el MIME que manda el
+// cliente son confiables, asi que se exige que los TRES coincidan: el MIME
+// esta en la lista, la extension corresponde a ese MIME, y (si el archivo
+// viene en memoria) sus primeros bytes son los de ese formato. Nunca se usa
 // el nombre original para escribir en disco.
 export function validarArchivo(file) {
   const permitidos = tiposPermitidos();
   const extension = path.extname(file.originalname || "").toLowerCase();
-  const extensionValida = permitidos.some((tipo) => EXTENSIONES[tipo] === extension);
-  if (!permitidos.includes(file.mimetype) || !extensionValida) {
+  const extensionesDelTipo = EXTENSIONES[file.mimetype];
+  const tipoValido = permitidos.includes(file.mimetype) && (!extensionesDelTipo || extensionesDelTipo.includes(extension));
+  if (!tipoValido) {
     return `Tipo de archivo no permitido: "${file.originalname}". Permitidos: PDF, PNG, JPG`;
   }
   if (/[\\/]|\.\./.test(file.originalname)) {
     return "El nombre del archivo contiene caracteres no permitidos";
+  }
+  if (file.buffer && !firmaCoincide(file.mimetype, file.buffer)) {
+    return `El contenido de "${file.originalname}" no corresponde a un archivo ${file.mimetype.split("/")[1].toUpperCase()} válido`;
   }
   return null;
 }
