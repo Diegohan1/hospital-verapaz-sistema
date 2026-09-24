@@ -38,6 +38,53 @@ function SidebarContent({ usuario, onLogout, onNavigate, restrictedMode, onToggl
     restrictedMode ? item.allowedInRestricted : true
   );
 
+  // Protección defensiva: si usuario no está disponible, no renderizar contenido sensible
+  if (!usuario) {
+    return (
+      <>
+        <div className="px-5 pt-6 pb-5">
+          <button
+            onClick={onToggleRestrictedMode}
+            className="flex items-center gap-2.5 w-full"
+            aria-label={restrictedMode ? "Mostrar todos los módulos" : "Ocultar módulos (solo Registro, Expediente, Bitácora)"}
+            style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}
+          >
+            <img src={logoVerapaz} alt="Hospital Verapaz" className="w-7 h-7 rounded-full shrink-0 transition-transform duration-200" style={{ transform: restrictedMode ? "rotate(180deg)" : "none" }} />
+            <div className="text-white font-bold text-sm tracking-wide flex-1 text-left">
+              HOSPITAL VERAPAZ
+              {restrictedMode && (
+                <span className="block text-[10px] font-normal opacity-75">Modo restringido</span>
+              )}
+            </div>
+          </button>
+        </div>
+        <nav className="flex-1 px-3 overflow-y-auto">
+          {visibleItems.map((item) => {
+            const activo = location.pathname === `/${item.key}`;
+            return (
+              <Link
+                key={item.key}
+                to={`/${item.key}`}
+                onClick={() => onNavigate?.()}
+                className="w-full flex items-center gap-3 text-left px-3 py-2.5 rounded-xl text-sm mb-1 transition-all duration-150"
+                style={
+                  activo
+                    ? { backgroundColor: COLORS.gold, color: COLORS.navy, fontWeight: 600 }
+                    : { color: "#D8F0E2", backgroundColor: "transparent" }
+                }
+                onMouseEnter={(e) => { if (!activo) e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.06)"; }}
+                onMouseLeave={(e) => { if (!activo) e.currentTarget.style.backgroundColor = "transparent"; }}
+              >
+                <item.Icon size={17} strokeWidth={2} className="shrink-0" />
+                <span className="truncate">{item.label}</span>
+              </Link>
+            );
+          })}
+        </nav>
+      </>
+    );
+  }
+
   return (
     <>
       <div className="px-5 pt-6 pb-5">
