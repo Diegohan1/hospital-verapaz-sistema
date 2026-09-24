@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
-  ClipboardList, FileText, FolderOpen, Syringe, Users, Wallet, Pill,
+  ClipboardList, FileText, FolderOpen, Syringe, Users, Wallet, Receipt, Pill,
   ClipboardCheck, ShieldCheck, BarChart3, LogOut, Menu, X,
 } from "lucide-react";
 import { COLORS } from "../styles/tokens";
@@ -11,10 +11,11 @@ import logoVerapaz from "../assets/logo-verapaz.png";
 const NAV_ITEMS = [
   { key: "registro", label: "Registro y Admisión", Icon: ClipboardList },
   { key: "expediente", label: "Expediente Clínico", Icon: FileText },
-  { key: "anexos", label: "Anexos y Escaneados", Icon: FolderOpen },
+  { key: "documentos", label: "Documentos del Paciente", Icon: FolderOpen },
   { key: "tratamiento", label: "Tratamiento", Icon: Syringe },
   { key: "referidos", label: "Clientes Referidos", Icon: Users },
   { key: "financiera", label: "Área Financiera", Icon: Wallet },
+  { key: "gastos", label: "Gastos del Hospital", Icon: Receipt },
   { key: "farmacia", label: "Farmacia", Icon: Pill },
   { key: "bitacora", label: "Bitácora de Visitas", Icon: ClipboardCheck },
   { key: "seguridad", label: "Seguridad y Roles", Icon: ShieldCheck },

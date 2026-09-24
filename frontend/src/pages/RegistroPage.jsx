@@ -298,7 +298,7 @@ export function RegistroPage({ onVerExpediente }) {
     setMensajeDocumento(null);
     setCamposOCR(new Set());
     setOcrDetalle(null);
-    setMostrarOpcionales(true);
+    setMostrarOpcionales(false);
   }
 
   // Abre el PDF escaneado (todavia sin guardar) en una pestaña nueva para
@@ -345,9 +345,10 @@ export function RegistroPage({ onVerExpediente }) {
   const [nacionalidadOtro, setNacionalidadOtro] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [mensaje, setMensaje] = useState(null);
-  // Dev-Mari: datos opcionales colapsables (se ocultan solos al escanear), y
-  // que campos llenó el OCR — para marcarlos "verifique" hasta que se editen.
-  const [mostrarOpcionales, setMostrarOpcionales] = useState(true);
+  // Dev-Mari: datos opcionales colapsables. Ocultos por defecto siempre (se
+  // despliegan solo con el clic del usuario en el interruptor) — nunca se
+  // auto-muestran, ni al entrar al módulo ni al quitar un escaneo.
+  const [mostrarOpcionales, setMostrarOpcionales] = useState(false);
   const [camposOCR, setCamposOCR] = useState(new Set());
   const [ocrDetalle, setOcrDetalle] = useState(null); // { texto, error } del ultimo escaneo
 
@@ -424,7 +425,7 @@ export function RegistroPage({ onVerExpediente }) {
       setMensajeDocumento(null);
       setCamposOCR(new Set());
       setOcrDetalle(null);
-      setMostrarOpcionales(true);
+      setMostrarOpcionales(false);
       setLugarOtro(false);
       setParentescoOtro(false);
       setReligionOtro(false);

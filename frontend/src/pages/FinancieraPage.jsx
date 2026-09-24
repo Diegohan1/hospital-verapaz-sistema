@@ -64,13 +64,16 @@ export function FinancieraPage() {
         { label: "INGRESOS HOSPITAL", value: `Q ${reporte.ingresosHospital.toLocaleString()}`, color: COLORS.navy },
         { label: "INGRESOS FARMACIA", value: `Q ${reporte.ingresosFarmacia.toLocaleString()}`, color: COLORS.gold },
         { label: "TOTAL CONSOLIDADO", value: `Q ${reporte.totalConsolidado.toLocaleString()}`, color: COLORS.text },
+        { label: "GASTOS DEL HOSPITAL", value: `Q ${reporte.totalGastos.toLocaleString()}`, color: COLORS.red },
+        { label: "IMPUESTOS PAGADOS (ESTIMADO)", value: `Q ${reporte.totalImpuestosEstimados.toLocaleString()}`, color: COLORS.red },
+        { label: "INGRESO NETO", value: `Q ${reporte.ingresoNeto.toLocaleString()}`, color: reporte.ingresoNeto >= 0 ? COLORS.navy : COLORS.red },
       ]
     : [];
 
   return (
     <div>
-      <PageHeader title="Área Financiera" subtitle="Reporte consolidado: ingresos del hospital y de farmacia, por separado y en conjunto (RF-21)" />
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+      <PageHeader title="Área Financiera" subtitle="Reporte consolidado: ingresos (hospital y farmacia), gastos, impuestos e ingreso neto (RF-21). El detalle de gastos se captura en Gastos del Hospital." />
+      <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-4">
         {stats.map((s) => (
           <Card key={s.label}>
             <div className="text-xs font-semibold" style={{ color: "#888" }}>{s.label}</div>

@@ -132,7 +132,7 @@ export function ReportesPage() {
         <p className="text-xs mb-2.5" style={{ color: "#888" }}>El rango aplica a todas las gráficas y tablas de esta página.</p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-4">
         <Card>
           <div className="text-xs font-semibold" style={{ color: "#888" }}>INGRESOS HOSPITAL</div>
           <div className="text-2xl font-bold mt-1" style={{ color: COLORS.navy }}>Q {financiero?.ingresosHospital?.toLocaleString() ?? "—"}</div>
@@ -145,7 +145,36 @@ export function ReportesPage() {
           <div className="text-xs font-semibold" style={{ color: "#888" }}>TOTAL CONSOLIDADO</div>
           <div className="text-2xl font-bold mt-1" style={{ color: COLORS.text }}>Q {financiero?.totalConsolidado?.toLocaleString() ?? "—"}</div>
         </Card>
+        <Card>
+          <div className="text-xs font-semibold" style={{ color: "#888" }}>GASTOS DEL HOSPITAL</div>
+          <div className="text-2xl font-bold mt-1" style={{ color: COLORS.red }}>Q {financiero?.totalGastos?.toLocaleString() ?? "—"}</div>
+        </Card>
+        <Card>
+          <div className="text-xs font-semibold" style={{ color: "#888" }}>INGRESO NETO</div>
+          <div className="text-2xl font-bold mt-1" style={{ color: (financiero?.ingresoNeto ?? 0) >= 0 ? COLORS.navy : COLORS.red }}>Q {financiero?.ingresoNeto?.toLocaleString() ?? "—"}</div>
+        </Card>
       </div>
+
+      {financiero?.gastosPorCategoria?.length > 0 && (
+        <Card style={{ marginBottom: 16 }}>
+          <div className="font-semibold text-sm mb-1">Gastos por categoría fiscal</div>
+          <p className="text-xs mb-3" style={{ color: "#888" }}>
+            Desglose del período elegido, con el impuesto estimado de cada categoría — captura y corrección en
+            "Gastos del Hospital".
+          </p>
+          <Table
+            headers={["Categoría fiscal", "Monto", "Impuesto estimado"]}
+            rows={financiero.gastosPorCategoria}
+            renderRow={(g) => (
+              <>
+                <td className="px-4 py-3">{g.categoria}</td>
+                <td className="px-4 py-3 font-semibold">Q{g.total.toLocaleString()}</td>
+                <td className="px-4 py-3" style={{ color: "#666" }}>{g.impuestoEstimado ? `Q${g.impuestoEstimado.toLocaleString()}` : "—"}</td>
+              </>
+            )}
+          />
+        </Card>
+      )}
 
       <Card style={{ marginBottom: 16 }}>
         <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
@@ -335,8 +364,10 @@ export function ReportesPage() {
                 <option value="">Todas</option>
                 {["login", "logout", "crear_paciente", "actualizar_paciente", "crear_usuario", "actualizar_usuario",
                   "crear_receta", "registrar_tratamiento", "generar_factura_hospital", "venta_farmacia",
-                  "entrada_inventario", "salida_uso_intrahospitalario", "registrar_visita", "ver_anexos",
-                  "subir_anexos", "descargar_anexo", "solicitar_reset_password", "reset_password"].map((a) => (
+                  "entrada_inventario", "salida_uso_intrahospitalario", "registrar_visita", "subir_documento",
+                  "descargar_documento", "eliminar_documento", "registrar_gasto", "eliminar_gasto",
+                  "crear_categoria_fiscal", "actualizar_categoria_fiscal",
+                  "solicitar_reset_password", "reset_password"].map((a) => (
                   <option key={a} value={a}>{a}</option>
                 ))}
               </select>
