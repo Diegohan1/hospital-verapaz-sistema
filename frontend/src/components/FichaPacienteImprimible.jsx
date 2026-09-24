@@ -5,6 +5,7 @@ import { FichaSeccion } from "./FichaSeccion";
 import { FichaCampo } from "./FichaCampo";
 import { COLORS } from "../styles/tokens";
 import { etiquetaCondicionEgreso } from "../utils/condicionesEgreso";
+import { fechaDia, fechaHoraLocal } from "../utils/fechas";
 
 function tamanoLegible(bytes) {
   if (bytes == null) return "—";
@@ -38,9 +39,11 @@ export function FichaPacienteImprimible({
   const causaMuerte = eg.causaMuerte ?? p.causaMuerte;
 
   const tieneEgreso = p.fechaEgreso || p.condicionEgreso || diagnosticoEgreso || complicaciones || operaciones || causaMuerte;
-  const tieneMaternidad = p.maternidad && (p.maternidad.numeroHijo || p.maternidad.fecha || p.maternidad.sexo || p.maternidad.condicionEgresoBebe);
+  const tieneMaternidad = p.maternidad && (p.maternidad.numeroHijo || p.maternidad.fecha || p.maternidad.sexo || p.maternidad.condicionEgresoBebe || p.maternidad.bebeNombre || p.maternidad.padreNombre);
   const tieneEmergencia = p.contactoEmergencia || p.telefonoEmergencia || p.parentesco;
   const tieneEncargado = p.encargadoNombre || p.encargadoTelefono;
+  // Fecha escrita en el papel (la mas antigua si hubiera varios documentos)
+  const fechaPapel = (documentos || []).map((d) => d.fechaDocumentoOriginal).filter(Boolean).sort()[0] || null;
 
   return (
     <div id="printable-area" className="text-black" style={{ fontSize: 13 }}>
@@ -51,6 +54,11 @@ export function FichaPacienteImprimible({
         <div className="grid grid-cols-3 gap-3">
           <FichaCampo label="Nombre completo" valor={p.nombreCompleto} colSpan={2} />
           <FichaCampo label="DPI / CUI" valor={p.dpi} />
+          {/* Dos fechas distintas: cuando se lleno el papel y cuando se
+              registro en el sistema (la primera solo existe si se escaneo
+              un expediente fisico). */}
+          <FichaCampo label="Registrado en el sistema" valor={p.creadoEn} formato="fechaHora" />
+          <FichaCampo label="Fecha del expediente en papel" valor={fechaPapel} formato="fecha" />
         </div>
       </FichaSeccion>
 
@@ -141,6 +149,12 @@ export function FichaPacienteImprimible({
             <FichaCampo label="Hora" valor={p.maternidad.hora} />
             <FichaCampo label="Sexo" valor={p.maternidad.sexo} />
             <FichaCampo label="Condición de egreso del bebé" valor={p.maternidad.condicionEgresoBebe} colSpan={4} />
+            <FichaCampo label="Nombre del bebé" valor={p.maternidad.bebeNombre} colSpan={2} />
+            {/* La madre es la propia paciente: se toma de su ficha */}
+            <FichaCampo label="Madre" valor={`${p.nombreCompleto}${p.dpi ? ` — DPI ${p.dpi}` : ""}`} colSpan={2} />
+            <FichaCampo label="Padre" valor={p.maternidad.padreNombre} colSpan={2} />
+            <FichaCampo label="DPI del padre" valor={p.maternidad.padreDpi} />
+            <FichaCampo label="Teléfono del padre" valor={p.maternidad.padreTelefono} />
           </div>
         </FichaSeccion>
       )}
@@ -182,7 +196,7 @@ export function FichaPacienteImprimible({
                   <FileText size={15} style={{ color: COLORS.navy }} className="shrink-0" />
                   <span className="font-semibold truncate">{d.nombreOriginal}</span>
                   <span className="text-xs" style={{ color: "#999" }}>
-                    {d.paginas} pág. · {tamanoLegible(d.tamano)} · {new Date(d.creadoEn).toLocaleDateString()}
+                    {d.paginas} pág. · {tamanoLegible(d.tamano)} · Fecha en el papel: {fechaDia(d.fechaDocumentoOriginal) || "—"} · Subido al sistema: {fechaHoraLocal(d.creadoEn)}
                   </span>
                 </span>
                 <span className="flex gap-1">

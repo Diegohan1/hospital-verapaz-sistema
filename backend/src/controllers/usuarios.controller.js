@@ -81,26 +81,27 @@ export async function actualizar(req, res) {
   }
 
   try {
+    // Sprint 5: si el usuario no queda con el rol clinico, colegiado/especialidad
+    // dejan de aplicar y se limpian en la misma escritura (no en una segunda,
+    // para no dejar la actualizacion sin su registro de auditoria).
+    let rolesFinales = roles;
+    if (rolesFinales === undefined) {
+      const existente = await prisma.usuario.findUnique({ where: { id: Number(req.params.id) }, select: { roles: true } });
+      if (!existente) return res.status(404).json({ error: "Usuario no encontrado" });
+      rolesFinales = existente.roles;
+    }
+    const debeLimpiarClinico = !rolesFinales.includes(ROLES.CONSULTA);
+
     const usuario = await prisma.usuario.update({
       where: { id: Number(req.params.id) },
       data: {
         nombre, roles, puedeAutogenerarToken,
-        // Sprint 5: si el usuario pierde el rol clinico, colegiado/especialidad
-        // dejan de aplicar y se limpian para no dejar datos inconsistentes
-        ...(colegiado !== undefined ? { colegiado } : {}),
-        ...(especialidad !== undefined ? { especialidad } : {}),
+        colegiado: debeLimpiarClinico ? null : colegiado,
+        especialidad: debeLimpiarClinico ? null : especialidad,
       },
       select: SELECT_PUBLICO,
     });
-    if (!usuario.roles.includes(ROLES.CONSULTA) && (usuario.colegiado || usuario.especialidad)) {
-      return res.json(
-        await prisma.usuario.update({
-          where: { id: usuario.id },
-          data: { colegiado: null, especialidad: null },
-          select: SELECT_PUBLICO,
-        })
-      );
-    }
+
     await registrarActividad(req.user.id, "actualizar_usuario", `${usuario.nombre} → roles: ${usuario.roles.join(", ")}, autogenera token: ${usuario.puedeAutogenerarToken}`);
     res.json(usuario);
   } catch (err) {

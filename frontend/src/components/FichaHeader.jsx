@@ -2,6 +2,7 @@ import React from "react";
 import { Printer } from "lucide-react";
 import { Button } from "./Button";
 import { COLORS } from "../styles/tokens";
+import { fechaHoraLocal } from "../utils/fechas";
 import logoVerapaz from "../assets/logo-verapaz.png";
 
 // Encabezado institucional de la ficha: zona de acciones superior (imprimir,
@@ -43,7 +44,7 @@ export function FichaHeader({ paciente, onImprimir }) {
 
       <div className="flex justify-between text-xs mb-4" style={{ color: "#444" }}>
         <span><strong>Historia clínica:</strong> {p.historiaClinica || "—"}</span>
-        <span><strong>Fecha de ingreso:</strong> {p.fechaIngreso ? new Date(p.fechaIngreso).toLocaleString() : "—"}</span>
+        <span><strong>Fecha de ingreso:</strong> {fechaHoraLocal(p.fechaIngreso) || "—"}</span>
       </div>
     </>
   );

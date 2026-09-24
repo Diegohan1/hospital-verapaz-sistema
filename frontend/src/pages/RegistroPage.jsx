@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from "react";
-import { Printer, Clipboard } from "lucide-react";
+import React, { useEffect, useMemo, useState } from "react";
+import { Printer, Camera, FileText, Download, Trash2, Smartphone, Eye, ChevronDown, ChevronUp } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
 import { Card } from "../components/Card";
 import { Table } from "../components/Table";
@@ -8,6 +8,7 @@ import { Banner } from "../components/Banner";
 import { Modal } from "../components/Modal";
 import { FichaPacienteImprimible } from "../components/FichaPacienteImprimible";
 import { CameraScannerModal } from "../components/CameraScannerModal";
+import { EscaneoQRModal } from "../components/EscaneoQRModal";
 import { PacienteBuscador } from "../components/PacienteBuscador";
 import { FormField, TextInput, Select, TextArea } from "../components/FormField";
 import { Combobox } from "../components/Combobox";
@@ -23,6 +24,7 @@ import { Cie10Input } from "../components/Cie10Input";
 import { formatearDPI, limpiarDPI, validarDPI } from "../utils/dpi";
 import { formatearTelefono, limpiarTelefono, telefonoIncompleto } from "../utils/telefono";
 import { COLORS } from "../styles/tokens";
+import { fechaDia, fechaLocal } from "../utils/fechas";
 
 const OTRO = "__otro__";
 
@@ -31,11 +33,15 @@ const PARENTESCOS = ["Esposo/a", "Padre", "Madre", "Hijo/a", "Hermano/a", "Abuel
 const RELIGIONES = ["Católica", "Evangélica / Cristiana", "Testigo de Jehová", "Mormona (SUD)", "Espiritualidad Maya", "Ninguna / Atea"];
 
 const CAMPOS_INGRESO_VACIOS = {
+  // Dev-Mari: datos de identificacion editables despues del registro (antes
+  // un error de digitacion —o del escaner— no se podia corregir).
+  idNombre: "", idDpi: "", idHistoria: "", idDireccion: "", idTelefono: "", idFechaNacimiento: "",
   tipoSangre: "",
   fechaIngreso: "", serviciosSolicitados: "", referidoDe: "", medicoReferenteId: "", impresionClinicaIngreso: "",
   fechaEgreso: "", diagnosticoEgresoCodigo: "", complicacionesCodigo: "", operacionesCodigo: "",
   condicionEgreso: "", autopsia: "", causaMuerte: "",
   matNumeroHijo: "", matFecha: "", matHora: "", matSexo: "", matCondicion: "",
+  matBebeNombre: "", matPadreNombre: "", matPadreDpi: "", matPadreTelefono: "",
 };
 
 // Los inputs datetime-local/date esperan "YYYY-MM-DDTHH:mm" / "YYYY-MM-DD" en
@@ -46,10 +52,13 @@ function toDatetimeLocal(iso) {
   const d = new Date(iso);
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 }
+// Fechas "de solo dia" (nacimiento del bebe, fecha de nacimiento) se guardan
+// como medianoche UTC: se leen en UTC. Convertirlas a hora local las corria un
+// dia atras en cada carga (en Guatemala, UTC-6) y, al volver a guardar,
+// retrocedian un dia mas cada vez.
 function toDateInput(iso) {
   if (!iso) return "";
-  const d = new Date(iso);
-  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  return new Date(iso).toISOString().slice(0, 10);
 }
 
 const OPCIONES_LUGAR = DEPARTAMENTOS_GUATEMALA.flatMap((d) =>
@@ -57,7 +66,7 @@ const OPCIONES_LUGAR = DEPARTAMENTOS_GUATEMALA.flatMap((d) =>
 );
 
 const CAMPOS_VACIOS = {
-  nombreCompleto: "", dpi: "", direccion: "", lugarNacimiento: "", fechaNacimiento: "",
+  nombreCompleto: "", dpi: "", historiaClinica: "", fechaIngreso: "", horaIngreso: "", direccion: "", lugarNacimiento: "", fechaNacimiento: "",
   telefono: "", edad: "", sexo: "", tipoSangre: "", estadoCivil: "", ocupacion: "", religion: "",
   nacionalidad: "", nombreConyuge: "", nombrePadre: "", nombreMadre: "",
   contactoEmergencia: "", telefonoEmergencia: "", parentesco: "",
@@ -85,11 +94,20 @@ export function RegistroPage({ onVerExpediente }) {
     { pageSize: 20 }
   );
   const { data: medicosReferentes } = useFetch("/referidos");
+  // Dev-Mari: si el servidor tiene activada la lectura avanzada (modelo de
+  // vision), se le avisa al personal que la imagen viaja a un servicio externo.
+  const { data: lecturaAvanzada } = useFetch(puedeRegistrar ? "/pacientes/lectura-avanzada/estado" : null, { enabled: puedeRegistrar });
 
   const [ingresoPacienteId, setIngresoPacienteId] = useState(null);
   const [mostrarFicha, setMostrarFicha] = useState(false);
   const [escanerAbierto, setEscanerAbierto] = useState(false);
+  const [escaneoQRAbierto, setEscaneoQRAbierto] = useState(false);
+  const [mensajeDocumento, setMensajeDocumento] = useState(null);
   const [mensajeFichaDocumento, setMensajeFichaDocumento] = useState(null);
+  // Dev-Mari: el expediente fisico se escanea ANTES de que el paciente
+  // exista — ya no depende de tener uno seleccionado. El PDF queda aqui,
+  // pendiente, hasta que se registra el paciente (un solo POST con ambos).
+  const [documentoPendiente, setDocumentoPendiente] = useState(null);
   const { data: pacienteDetalle, reload: reloadPacienteDetalle } = useFetch(
     ingresoPacienteId ? `/pacientes/${ingresoPacienteId}` : null,
     { enabled: !!ingresoPacienteId }
@@ -111,6 +129,12 @@ export function RegistroPage({ onVerExpediente }) {
     // egresoClinico; los campos planos legacy son solo fallback de datos viejos.
     const eg = pacienteDetalle.egresoClinico || {};
     setIngresoForm({
+      idNombre: pacienteDetalle.nombreCompleto || "",
+      idDpi: pacienteDetalle.dpi || "",
+      idHistoria: pacienteDetalle.historiaClinica || "",
+      idDireccion: pacienteDetalle.direccion || "",
+      idTelefono: pacienteDetalle.telefono || "",
+      idFechaNacimiento: toDateInput(pacienteDetalle.fechaNacimiento),
       tipoSangre: pacienteDetalle.tipoSangre || "",
       fechaIngreso: toDatetimeLocal(pacienteDetalle.fechaIngreso),
       serviciosSolicitados: pacienteDetalle.serviciosSolicitados || "",
@@ -129,6 +153,10 @@ export function RegistroPage({ onVerExpediente }) {
       matHora: pacienteDetalle.maternidad?.hora || "",
       matSexo: pacienteDetalle.maternidad?.sexo || "",
       matCondicion: pacienteDetalle.maternidad?.condicionEgresoBebe || "",
+      matBebeNombre: pacienteDetalle.maternidad?.bebeNombre || "",
+      matPadreNombre: pacienteDetalle.maternidad?.padreNombre || "",
+      matPadreDpi: pacienteDetalle.maternidad?.padreDpi || "",
+      matPadreTelefono: pacienteDetalle.maternidad?.padreTelefono || "",
     });
   }, [pacienteDetalle]);
 
@@ -151,10 +179,28 @@ export function RegistroPage({ onVerExpediente }) {
 
   async function handleSubmitIngreso(e) {
     e.preventDefault();
+    const f = ingresoForm;
+    // Identificacion editable: se valida aqui para dar el mensaje al lado del
+    // formulario en vez de un 400 generico del servidor.
+    const errorId =
+      (!f.idNombre.trim() && "El nombre no puede quedar vacío.") ||
+      (validarDPI(f.idDpi).estado !== "valido" && (validarDPI(f.idDpi).mensaje || "Ingrese un DPI completo y válido.")) ||
+      (telefonoIncompleto(f.idTelefono) && "El teléfono debe tener 8 dígitos.") ||
+      (telefonoIncompleto(f.matPadreTelefono) && "El teléfono del padre debe tener 8 dígitos.") ||
+      (f.matPadreDpi && validarDPI(f.matPadreDpi).estado !== "valido" && "El DPI del padre debe tener 13 dígitos.");
+    if (errorId) {
+      setMensajeIngreso({ tone: "error", texto: errorId });
+      return;
+    }
     setGuardandoIngreso(true);
     setMensajeIngreso(null);
-    const f = ingresoForm;
     const payload = {
+      nombreCompleto: f.idNombre.trim(),
+      dpi: limpiarDPI(f.idDpi),
+      historiaClinica: f.idHistoria.trim() || undefined,
+      direccion: f.idDireccion.trim() || null,
+      telefono: limpiarTelefono(f.idTelefono) || null,
+      fechaNacimiento: f.idFechaNacimiento || null,
       tipoSangre: f.tipoSangre || null,
       fechaIngreso: f.fechaIngreso ? new Date(f.fechaIngreso).toISOString() : null,
       serviciosSolicitados: f.serviciosSolicitados || null,
@@ -173,13 +219,17 @@ export function RegistroPage({ onVerExpediente }) {
         causaMuerte: f.causaMuerte || null,
       },
     };
-    if (f.matNumeroHijo || f.matFecha || f.matHora || f.matSexo || f.matCondicion) {
+    if (f.matNumeroHijo || f.matFecha || f.matHora || f.matSexo || f.matCondicion || f.matBebeNombre || f.matPadreNombre || f.matPadreDpi || f.matPadreTelefono) {
       payload.maternidad = {
         numeroHijo: f.matNumeroHijo ? Number(f.matNumeroHijo) : null,
         fecha: f.matFecha ? new Date(f.matFecha).toISOString() : null,
         hora: f.matHora || null,
         sexo: f.matSexo || null,
         condicionEgresoBebe: f.matCondicion || null,
+        bebeNombre: f.matBebeNombre.trim() || null,
+        padreNombre: f.matPadreNombre.trim() || null,
+        padreDpi: limpiarDPI(f.matPadreDpi) || null,
+        padreTelefono: limpiarTelefono(f.matPadreTelefono) || null,
       };
     }
     try {
@@ -191,6 +241,73 @@ export function RegistroPage({ onVerExpediente }) {
     } finally {
       setGuardandoIngreso(false);
     }
+  }
+
+  // Dev-Mari: el escaner entrega el PDF generado + lo que el OCR pudo leer
+  // del documento (nombre, DPI, telefono, fecha). El documento se queda en
+  // memoria (documentoPendiente) — se adjunta al paciente hasta que se
+  // guarda el formulario, en una sola operacion (nunca queda un documento
+  // huerfano sin paciente ni un paciente sin su respaldo escaneado).
+  function manejarEscaneoConfirmado(blob, { paginas, nombre, datosBasicos }) {
+    const d = datosBasicos || {};
+    const leidos = {
+      nombreCompleto: d.nombreCompleto,
+      dpi: d.dpi ? limpiarDPI(d.dpi) : "",
+      historiaClinica: d.historiaClinica,
+      direccion: d.direccion,
+      telefono: d.telefono ? limpiarTelefono(d.telefono) : "",
+      fechaNacimiento: d.fechaNacimiento,
+      fechaIngreso: d.fechaIngreso,
+    };
+    // Solo se llenan los campos que estan vacios: nunca se pisa lo que el
+    // personal ya haya escrito a mano.
+    const llenados = Object.entries(leidos).filter(([campo, valor]) => valor && !form[campo]).map(([campo]) => campo);
+    setForm((f) => {
+      const nuevo = { ...f };
+      for (const campo of llenados) nuevo[campo] = leidos[campo];
+      return nuevo;
+    });
+    setCamposOCR(new Set(llenados));
+    setOcrDetalle({ texto: d.textoCrudo || "", error: d.error || null, fuente: d.fuente || "local", avisoIA: d.avisoIA || null });
+    // Con un expediente escaneado, los datos opcionales ya quedan en el PDF
+    // original: se ocultan por defecto (el interruptor los vuelve a mostrar).
+    setMostrarOpcionales(false);
+    setDocumentoPendiente({ blob, nombre, paginas, fechaDocumentoOriginal: d.fechaIngreso || "" });
+
+    const lector = d.fuente === "ia" ? "la lectura avanzada" : "el lector local";
+    // Si la lectura avanzada estaba activa pero fallo, se avisa por que (y se
+    // uso el lector local): asi no parece que "no paso nada".
+    const notaIA = d.avisoIA ? ` La lectura avanzada no estuvo disponible (${d.avisoIA}); se usó el lector local, que lee mal la letra a mano.` : "";
+    let mensaje;
+    if (d.error) {
+      mensaje = { tone: "info", texto: `El lector automático de texto no pudo ejecutarse (${d.error}). Complete los datos a mano; el escaneo igual se adjuntará al guardar.${notaIA}` };
+    } else if (llenados.length) {
+      mensaje = { tone: "success", texto: `Se autorellenaron ${llenados.length} campo${llenados.length === 1 ? "" : "s"} con ${lector} — verifíquelos contra el papel antes de guardar (la letra manuscrita se lee con errores).${notaIA}` };
+    } else {
+      mensaje = { tone: "info", texto: `No se lograron leer datos del documento con ${lector}; complete el formulario a mano. El escaneo igual se adjuntará al guardar.${notaIA}` };
+    }
+    setMensajeDocumento(mensaje);
+  }
+
+  // Vista previa incrustada del PDF escaneado (se libera al cambiar o quitar).
+  const urlVistaPrevia = useMemo(() => (documentoPendiente?.blob ? URL.createObjectURL(documentoPendiente.blob) : null), [documentoPendiente?.blob]);
+  useEffect(() => () => { if (urlVistaPrevia) URL.revokeObjectURL(urlVistaPrevia); }, [urlVistaPrevia]);
+
+  function quitarDocumentoPendiente() {
+    setDocumentoPendiente(null);
+    setMensajeDocumento(null);
+    setCamposOCR(new Set());
+    setOcrDetalle(null);
+    setMostrarOpcionales(false);
+  }
+
+  // Abre el PDF escaneado (todavia sin guardar) en una pestaña nueva para
+  // revisarlo antes de confirmar el registro del paciente.
+  function verDocumentoPendiente() {
+    if (!documentoPendiente) return;
+    const url = URL.createObjectURL(documentoPendiente.blob);
+    window.open(url, "_blank");
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
   }
 
   async function descargarDocumento(pacienteId, doc, alError) {
@@ -205,7 +322,7 @@ export function RegistroPage({ onVerExpediente }) {
       a.remove();
       URL.revokeObjectURL(url);
     } catch (err) {
-      alError({ tone: "error", texto: err.message });
+      (alError || setMensajeDocumento)({ tone: "error", texto: err.message });
     }
   }
 
@@ -214,29 +331,9 @@ export function RegistroPage({ onVerExpediente }) {
     try {
       await api.del(`/pacientes/${pacienteId}/documentos/${doc.id}`);
       reload();
-      alError({ tone: "success", texto: "Documento eliminado del expediente." });
+      (alError || setMensajeDocumento)({ tone: "success", texto: "Documento eliminado del expediente." });
     } catch (err) {
-      alError({ tone: "error", texto: err.message });
-    }
-  }
-
-  // Cambios2: el escaner entrega el PDF generado; se sube al expediente del
-  // paciente seleccionado en "Ingreso / Egreso" con sus metadatos.
-  async function confirmarDocumento(blob, { paginas, nombre }) {
-    if (!ingresoPacienteId) {
-      setMensajeFichaDocumento({ tone: "error", texto: "No hay paciente seleccionado para asociar el documento." });
-      return;
-    }
-    const fd = new FormData();
-    fd.append("documento", new File([blob], nombre, { type: "application/pdf" }));
-    fd.append("nombreOriginal", nombre);
-    fd.append("paginas", String(paginas));
-    try {
-      await api.post(`/pacientes/${ingresoPacienteId}/documentos`, fd);
-      reloadDocumentos();
-      setMensajeFichaDocumento({ tone: "success", texto: `Documento guardado en el expediente (${paginas} página${paginas === 1 ? "" : "s"}).` });
-    } catch (err) {
-      setMensajeFichaDocumento({ tone: "error", texto: err.message });
+      (alError || setMensajeDocumento)({ tone: "error", texto: err.message });
     }
   }
 
@@ -248,12 +345,34 @@ export function RegistroPage({ onVerExpediente }) {
   const [nacionalidadOtro, setNacionalidadOtro] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [mensaje, setMensaje] = useState(null);
+  // Dev-Mari: datos opcionales colapsables. Ocultos por defecto siempre (se
+  // despliegan solo con el clic del usuario en el interruptor) — nunca se
+  // auto-muestran, ni al entrar al módulo ni al quitar un escaneo.
+  const [mostrarOpcionales, setMostrarOpcionales] = useState(false);
+  const [camposOCR, setCamposOCR] = useState(new Set());
+  const [ocrDetalle, setOcrDetalle] = useState(null); // { texto, error } del ultimo escaneo
 
   const dpiEstado = validarDPI(form.dpi);
   const DPI_COLOR = { valido: COLORS.green, invalido: COLORS.red, incompleto: "#B08B2E", vacio: "#888" };
 
   function setCampo(campo, valor) {
     setForm((f) => ({ ...f, [campo]: valor }));
+    // Editar a mano un campo autorrellenado ya es "verificarlo": se quita el aviso.
+    setCamposOCR((s) => {
+      if (!s.has(campo)) return s;
+      const nuevo = new Set(s);
+      nuevo.delete(campo);
+      return nuevo;
+    });
+  }
+
+  function avisoOCR(campo) {
+    if (!camposOCR.has(campo)) return null;
+    return (
+      <p className="text-[11px] mt-1" style={{ color: COLORS.gold }}>
+        Leído del escaneo — verifique que coincida con el papel.
+      </p>
+    );
   }
 
   async function handleSubmit(e) {
@@ -265,14 +384,48 @@ export function RegistroPage({ onVerExpediente }) {
     setGuardando(true);
     setMensaje(null);
     try {
-      const paciente = await api.post("/pacientes", {
+      const datosPaciente = {
         ...form,
         edad: form.edad ? Number(form.edad) : undefined,
         fechaNacimiento: form.fechaNacimiento || undefined,
+        // Fecha + hora locales del ingreso. Sin hora se usa mediodia: un
+        // "YYYY-MM-DD" a secas seria medianoche UTC y en Guatemala (UTC-6) se
+        // veria como el dia anterior.
+        fechaIngreso: form.fechaIngreso ? new Date(`${form.fechaIngreso}T${form.horaIngreso || "12:00"}:00`).toISOString() : undefined,
+        historiaClinica: form.historiaClinica.trim() || undefined,
         medicoReferenteId: form.medicoReferenteId ? Number(form.medicoReferenteId) : undefined,
+      };
+      delete datosPaciente.horaIngreso; // solo sirve para armar fechaIngreso
+
+      let paciente;
+      if (documentoPendiente) {
+        // Un solo POST con los datos del paciente + el PDF escaneado: el
+        // backend crea ambos en la misma transaccion.
+        const fd = new FormData();
+        for (const [campo, valor] of Object.entries(datosPaciente)) {
+          if (valor !== undefined && valor !== null && valor !== "") fd.append(campo, valor);
+        }
+        fd.append("documento", new File([documentoPendiente.blob], documentoPendiente.nombre, { type: "application/pdf" }));
+        fd.append("paginas", String(documentoPendiente.paginas));
+        // La fecha del papel es la que el doctor anoto como fecha de ingreso:
+        // si no se capturo aparte, se usa esa.
+        const fechaPapel = documentoPendiente.fechaDocumentoOriginal || form.fechaIngreso;
+        if (fechaPapel) fd.append("fechaDocumentoOriginal", fechaPapel);
+        paciente = await api.post("/pacientes", fd);
+      } else {
+        paciente = await api.post("/pacientes", datosPaciente);
+      }
+
+      setMensaje({
+        tone: "success",
+        texto: `Paciente registrado con historia clínica ${paciente.historiaClinica}${documentoPendiente ? " (expediente escaneado adjunto)." : "."}`,
       });
-      setMensaje({ tone: "success", texto: `Paciente registrado con historia clínica ${paciente.historiaClinica}` });
       setForm(CAMPOS_VACIOS);
+      setDocumentoPendiente(null);
+      setMensajeDocumento(null);
+      setCamposOCR(new Set());
+      setOcrDetalle(null);
+      setMostrarOpcionales(false);
       setLugarOtro(false);
       setParentescoOtro(false);
       setReligionOtro(false);
@@ -317,32 +470,100 @@ export function RegistroPage({ onVerExpediente }) {
         </button>
       </div>
 
-      {/* Cambios2/revision: escaneo documental independiente de pacientes
-          existentes. Boton hasta arriba de la pestana "Paciente nuevo" con
-          icono de portapapeles; preparado para el OCR futuro que autoguardara
-          un nuevo paciente a partir del documento escaneado. */}
-      {tab === "nuevo" && puedeRegistrar && (
-        <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
-          <p className="text-xs" style={{ color: "#888" }}>
-            Escanee el documento antes o después de registrar: la captura se procesa automáticamente (bordes y perspectiva) y se descarga como PDF.
+      {/* Dev-Mari: escaneo del expediente fisico ANTES de registrar al
+          paciente — ya no depende de tener uno seleccionado. Util cuando el
+          doctor ya lo lleno a mano en papel: se escanea, el sistema intenta
+          leer los datos basicos y autorellenar el formulario de abajo, y el
+          PDF se adjunta al guardar. El escaneo es opcional: tambien se puede
+          seguir llenando el formulario a mano sin escanear nada. */}
+      {tab === "nuevo" && puedeRegistrar && puedeVerDocumentos && (
+        <Card style={{ marginBottom: 16 }}>
+          <div className="font-semibold text-sm mb-1">Escanear expediente físico (opcional)</div>
+          <p className="text-xs mb-4" style={{ color: "#888" }}>
+            Si el doctor ya llenó el expediente en papel, escanéelo aquí antes de registrar: el sistema genera el PDF
+            automáticamente y trata de leer nombre, DPI, historia clínica, dirección, teléfono y fechas para autorellenar el formulario de abajo
+            (siempre revisable). El PDF original queda guardado tal cual, sin alterar la letra ni la firma del doctor,
+            y se adjunta al paciente al hacer clic en "Guardar paciente".
           </p>
-          <Button onClick={() => setEscanerAbierto(true)}>
-            <span className="flex items-center gap-1.5">
-              <Clipboard size={15} aria-hidden />
-              <span aria-label="Escanear documento">Escanear documento</span>
-            </span>
-          </Button>
-        </div>
+
+          {lecturaAvanzada?.disponible && (
+            <p className="text-xs mb-3 font-semibold" style={{ color: COLORS.gold }}>
+              Lectura avanzada activa: para leer la letra a mano, la imagen de la primera página del expediente se envía a un
+              servicio externo (Anthropic) únicamente para extraer estos datos.
+            </p>
+          )}
+
+          {mensajeDocumento && <Banner tone={mensajeDocumento.tone}>{mensajeDocumento.texto}</Banner>}
+
+          {!documentoPendiente ? (
+            <div className="flex gap-2 flex-wrap">
+              <Button onClick={() => setEscanerAbierto(true)}>
+                <span className="flex items-center gap-1.5"><Camera size={15} /> Escanear en esta computadora</span>
+              </Button>
+              <Button variant="secondary" onClick={() => setEscaneoQRAbierto(true)}>
+                <span className="flex items-center gap-1.5"><Smartphone size={15} /> Escanear con el teléfono</span>
+              </Button>
+            </div>
+          ) : (
+            <div className="flex items-end gap-3 justify-between flex-wrap">
+              <span className="flex items-center gap-2 min-w-0 text-sm">
+                <FileText size={15} style={{ color: COLORS.navy }} className="shrink-0" />
+                <span className="font-semibold">{documentoPendiente.nombre}</span>
+                <span className="text-xs" style={{ color: "#999" }}>
+                  {documentoPendiente.paginas} pág. — se adjuntará al guardar el paciente
+                </span>
+              </span>
+              <FormField label="Fecha en el documento (papel)">
+                <TextInput
+                  type="date"
+                  value={documentoPendiente.fechaDocumentoOriginal}
+                  onChange={(e) => setDocumentoPendiente((d) => ({ ...d, fechaDocumentoOriginal: e.target.value }))}
+                />
+                <p className="text-[11px] mt-1" style={{ color: "#999" }}>Distinta de la fecha de registro en el sistema, que se guarda sola.</p>
+              </FormField>
+              <span className="flex gap-1">
+                <button onClick={verDocumentoPendiente} className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-lg" style={{ color: COLORS.navy }}>
+                  <Eye size={13} /> Ver documento
+                </button>
+                <button onClick={quitarDocumentoPendiente} className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-lg" style={{ color: COLORS.red }}>
+                  <Trash2 size={13} /> Quitar escaneo
+                </button>
+              </span>
+            </div>
+          )}
+
+          {urlVistaPrevia && (
+            <iframe title="Vista previa del expediente escaneado" src={urlVistaPrevia} className="w-full mt-3 rounded-lg" style={{ height: 420, border: `1px solid ${COLORS.border}` }} />
+          )}
+
+          {documentoPendiente && ocrDetalle && (
+            <details className="mt-3 text-xs" style={{ color: "#888" }}>
+              <summary className="cursor-pointer font-semibold">Ver cómo se leyó el documento (diagnóstico)</summary>
+              <p className="mt-2">Lector usado: <strong>{ocrDetalle.fuente === "ia" ? "lectura avanzada (modelo de visión)" : "lector local (Tesseract)"}</strong></p>
+              {ocrDetalle.avisoIA && <p className="mt-1" style={{ color: COLORS.gold }}>Lectura avanzada no disponible: {ocrDetalle.avisoIA}</p>}
+              {ocrDetalle.error && <p className="mt-1" style={{ color: COLORS.red }}>Error del lector: {ocrDetalle.error}</p>}
+              {ocrDetalle.fuente !== "ia" && (
+                <pre className="whitespace-pre-wrap mt-2 p-2 rounded-lg overflow-auto" style={{ backgroundColor: "#f6f6f6", maxHeight: 220 }}>
+                  {ocrDetalle.texto || "(no se leyó ningún texto)"}
+                </pre>
+              )}
+            </details>
+          )}
+        </Card>
       )}
 
       {tab === "nuevo" && puedeRegistrar ? (
         <Card>
           <p className="text-xs font-semibold mb-4" style={{ color: "#888" }}>
-            Historia clínica: se genera automáticamente al guardar (RF-03). El DPI no puede repetirse (RF-04).
+            Historia clínica: si la hoja en papel ya trae una, escríbala tal cual; si se deja vacía, se genera automáticamente al guardar (RF-03). El DPI no puede repetirse (RF-04).
           </p>
           {mensaje && <Banner tone={mensaje.tone}>{mensaje.texto}</Banner>}
           <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            <FormField label="Nombre completo"><TextInput required value={form.nombreCompleto} onChange={(e) => setCampo("nombreCompleto", e.target.value)} /></FormField>
+            <div className="col-span-1 sm:col-span-2 lg:col-span-3 font-semibold text-sm" style={{ color: COLORS.navy }}>Datos básicos</div>
+            <FormField label="Nombre completo">
+              <TextInput required value={form.nombreCompleto} onChange={(e) => setCampo("nombreCompleto", e.target.value)} />
+              {avisoOCR("nombreCompleto")}
+            </FormField>
             <FormField label="DPI / CUI">
               <TextInput
                 required
@@ -357,8 +578,66 @@ export function RegistroPage({ onVerExpediente }) {
               {!dpiEstado.mensaje && (
                 <p className="text-xs mt-1" style={{ color: "#999" }}>Si es menor de edad, use el CUI del certificado de nacimiento — es el mismo número de 13 dígitos.</p>
               )}
+              {avisoOCR("dpi")}
             </FormField>
-            <FormField label="Fecha de nacimiento"><TextInput type="date" value={form.fechaNacimiento} onChange={(e) => setCampo("fechaNacimiento", e.target.value)} /></FormField>
+            <FormField label="Historia clínica (la de la hoja, si ya tiene)">
+              <TextInput value={form.historiaClinica} maxLength={40} onChange={(e) => setCampo("historiaClinica", e.target.value)} placeholder="Vacía = se genera automáticamente" />
+              {avisoOCR("historiaClinica")}
+            </FormField>
+            <FormField label="Dirección">
+              <TextInput value={form.direccion} onChange={(e) => setCampo("direccion", e.target.value)} />
+              {avisoOCR("direccion")}
+            </FormField>
+            <FormField label="Teléfono">
+              <TextInput
+                value={formatearTelefono(form.telefono)}
+                onChange={(e) => setCampo("telefono", limpiarTelefono(e.target.value))}
+                placeholder="0000 0000"
+                inputMode="numeric"
+              />
+              {telefonoIncompleto(form.telefono) && (
+                <p className="text-xs mt-1" style={{ color: "#B08B2E" }}>El teléfono debe tener 8 dígitos.</p>
+              )}
+              {avisoOCR("telefono")}
+            </FormField>
+            <FormField label="Fecha de nacimiento">
+              <TextInput type="date" value={form.fechaNacimiento} onChange={(e) => setCampo("fechaNacimiento", e.target.value)} />
+              {avisoOCR("fechaNacimiento")}
+            </FormField>
+            <FormField label="Fecha de ingreso">
+              <TextInput type="date" value={form.fechaIngreso} onChange={(e) => setCampo("fechaIngreso", e.target.value)} />
+              {avisoOCR("fechaIngreso")}
+            </FormField>
+            <FormField label="Hora de ingreso (opcional)">
+              <TextInput type="time" value={form.horaIngreso} onChange={(e) => setCampo("horaIngreso", e.target.value)} />
+              {form.fechaIngreso && !form.horaIngreso && (
+                <p className="text-[11px] mt-1" style={{ color: "#999" }}>Sin hora, se guarda solo la fecha (12:00 como referencia).</p>
+              )}
+            </FormField>
+
+            {/* Datos opcionales: al escanear un expediente ya llenado por el doctor
+                se ocultan solos (todo eso ya queda en el PDF original); al
+                registrar a mano se muestran. El interruptor siempre permite
+                cambiar de opinion. */}
+            <div className="col-span-1 sm:col-span-2 lg:col-span-3 flex items-center gap-3 flex-wrap pt-2" style={{ borderTop: `1px dashed ${COLORS.border}` }}>
+              <button
+                type="button"
+                onClick={() => setMostrarOpcionales((v) => !v)}
+                aria-expanded={mostrarOpcionales}
+                className="flex items-center gap-1.5 text-sm font-semibold"
+                style={{ color: COLORS.navy }}
+              >
+                {mostrarOpcionales ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                {mostrarOpcionales ? "Ocultar datos opcionales" : "Mostrar datos opcionales"}
+              </button>
+              {!mostrarOpcionales && documentoPendiente && (
+                <span className="text-xs" style={{ color: "#999" }}>
+                  Ocultos porque se escaneó el expediente: todo lo demás queda en el PDF original.
+                </span>
+              )}
+            </div>
+
+            <div className={mostrarOpcionales ? "contents" : "hidden"}>
             <FormField label="Lugar de nacimiento">
               {lugarOtro ? (
                 <TextInput
@@ -382,18 +661,6 @@ export function RegistroPage({ onVerExpediente }) {
               >
                 {lugarOtro ? "← Buscar en la lista de Guatemala" : "¿Nació fuera de Guatemala? Escríbalo aquí"}
               </button>
-            </FormField>
-            <FormField label="Dirección"><TextInput value={form.direccion} onChange={(e) => setCampo("direccion", e.target.value)} /></FormField>
-            <FormField label="Teléfono">
-              <TextInput
-                value={formatearTelefono(form.telefono)}
-                onChange={(e) => setCampo("telefono", limpiarTelefono(e.target.value))}
-                placeholder="0000 0000"
-                inputMode="numeric"
-              />
-              {telefonoIncompleto(form.telefono) && (
-                <p className="text-xs mt-1" style={{ color: "#B08B2E" }}>El teléfono debe tener 8 dígitos.</p>
-              )}
             </FormField>
             <FormField label="Edad"><TextInput type="number" min="0" value={form.edad} onChange={(e) => setCampo("edad", e.target.value)} /></FormField>
             <FormField label="Sexo">
@@ -549,18 +816,13 @@ export function RegistroPage({ onVerExpediente }) {
                 </FormField>
               </>
             )}
+            </div>
             <div className="col-span-1 sm:col-span-2 lg:col-span-3 mt-2">
               <Button type="submit" disabled={guardando}>{guardando ? "Guardando…" : "Guardar paciente"}</Button>
             </div>
           </form>
         </Card>
       ) : null}
-
-      {/* Cambios2: escaneo documental del paciente dentro de "Paciente nuevo".
-          Se toma la foto o se sube el archivo y el sistema detecta bordes,
-          corrige perspectiva y aplica el filtro automaticamente. */}
-      
-
       {tab === "ingreso" && puedeRegistrar ? (
         <Card>
           <p className="text-xs font-semibold mb-4" style={{ color: "#888" }}>
@@ -582,6 +844,32 @@ export function RegistroPage({ onVerExpediente }) {
               {mensajeIngreso && <Banner tone={mensajeIngreso.tone}>{mensajeIngreso.texto}</Banner>}
 
               <div>
+                <div className="font-semibold text-sm mb-1" style={{ color: COLORS.navy }}>Datos de identificación</div>
+                <p className="text-[11px] mb-3" style={{ color: "#999" }}>
+                  Aquí se corrigen los datos básicos si se digitaron mal (o si el lector del escáner se equivocó). Cambiar la
+                  historia clínica solo es necesario si no coincide con la del papel; debe ser única.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+                  <FormField label="Nombre completo">
+                    <TextInput value={ingresoForm.idNombre} onChange={(e) => setCampoIngreso("idNombre", e.target.value)} />
+                  </FormField>
+                  <FormField label="DPI / CUI">
+                    <TextInput value={formatearDPI(ingresoForm.idDpi)} onChange={(e) => setCampoIngreso("idDpi", limpiarDPI(e.target.value))} placeholder="0000 00000 0000" inputMode="numeric" />
+                  </FormField>
+                  <FormField label="Historia clínica">
+                    <TextInput value={ingresoForm.idHistoria} maxLength={40} onChange={(e) => setCampoIngreso("idHistoria", e.target.value)} />
+                  </FormField>
+                  <FormField label="Dirección">
+                    <TextInput value={ingresoForm.idDireccion} onChange={(e) => setCampoIngreso("idDireccion", e.target.value)} />
+                  </FormField>
+                  <FormField label="Teléfono">
+                    <TextInput value={formatearTelefono(ingresoForm.idTelefono)} onChange={(e) => setCampoIngreso("idTelefono", limpiarTelefono(e.target.value))} placeholder="0000 0000" inputMode="numeric" />
+                  </FormField>
+                  <FormField label="Fecha de nacimiento">
+                    <TextInput type="date" value={ingresoForm.idFechaNacimiento} onChange={(e) => setCampoIngreso("idFechaNacimiento", e.target.value)} />
+                  </FormField>
+                </div>
+
                 <div className="font-semibold text-sm mb-3" style={{ color: COLORS.navy }}>Datos generales</div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-2">
                   <FormField label="Tipo de sangre">
@@ -684,6 +972,26 @@ export function RegistroPage({ onVerExpediente }) {
                   <FormField label="Condición de egreso del bebé">
                     <TextInput value={ingresoForm.matCondicion} onChange={(e) => setCampoIngreso("matCondicion", e.target.value)} />
                   </FormField>
+                  <FormField label="Nombre del bebé (si ya tiene)">
+                    <TextInput value={ingresoForm.matBebeNombre} onChange={(e) => setCampoIngreso("matBebeNombre", e.target.value)} />
+                  </FormField>
+                </div>
+
+                <div className="font-semibold text-xs mt-4 mb-2" style={{ color: "#666" }}>Padres del bebé</div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <FormField label="Madre (la paciente)">
+                    <TextInput disabled value={pacienteDetalle ? `${pacienteDetalle.nombreCompleto} · DPI ${pacienteDetalle.dpi}` : ""} readOnly />
+                    <p className="text-[11px] mt-1" style={{ color: "#999" }}>Ya está registrada: sus datos se toman de su ficha.</p>
+                  </FormField>
+                  <FormField label="Nombre del padre">
+                    <TextInput value={ingresoForm.matPadreNombre} onChange={(e) => setCampoIngreso("matPadreNombre", e.target.value)} />
+                  </FormField>
+                  <FormField label="DPI del padre (opcional)">
+                    <TextInput value={formatearDPI(ingresoForm.matPadreDpi)} onChange={(e) => setCampoIngreso("matPadreDpi", limpiarDPI(e.target.value))} placeholder="0000 00000 0000" inputMode="numeric" />
+                  </FormField>
+                  <FormField label="Teléfono del padre (opcional)">
+                    <TextInput value={formatearTelefono(ingresoForm.matPadreTelefono)} onChange={(e) => setCampoIngreso("matPadreTelefono", limpiarTelefono(e.target.value))} placeholder="0000 0000" inputMode="numeric" />
+                  </FormField>
                 </div>
               </div>
 
@@ -705,7 +1013,7 @@ export function RegistroPage({ onVerExpediente }) {
           </div>
           {pacientesLista.error && <Banner tone="error">{pacientesLista.error}</Banner>}
           <Table
-            headers={["Historia clínica", "Nombre", "DPI", "Edad", "Sexo", "Sangre", ""]}
+            headers={["Historia clínica", "Nombre", "DPI", "Edad", "Sexo", "Sangre", "Fechas de registro", ""]}
             rows={pacientesLista.loading ? [] : pacientesLista.items}
             emptyMessage={pacientesLista.loading ? "Cargando…" : "No hay pacientes registrados."}
             renderRow={(p) => (
@@ -716,6 +1024,12 @@ export function RegistroPage({ onVerExpediente }) {
                 <td className="px-4 py-3">{p.edad ?? "—"}</td>
                 <td className="px-4 py-3">{p.sexo ?? "—"}</td>
                 <td className="px-4 py-3">{p.tipoSangre ?? "—"}</td>
+                <td className="px-4 py-3 text-xs leading-5" style={{ color: "#555" }}>
+                  <div><span style={{ color: "#999" }}>En el sistema:</span> {fechaLocal(p.creadoEn) || "—"}</div>
+                  {p.documentos?.[0]?.fechaDocumentoOriginal && (
+                    <div><span style={{ color: "#999" }}>En el papel:</span> {fechaDia(p.documentos[0].fechaDocumentoOriginal)}</div>
+                  )}
+                </td>
                 <td className="px-4 py-3">
                   <button className="text-xs font-semibold" style={{ color: COLORS.navy }} onClick={() => onVerExpediente(p.id)}>
                     Ver expediente →
@@ -745,8 +1059,13 @@ export function RegistroPage({ onVerExpediente }) {
       <CameraScannerModal
         open={escanerAbierto}
         onClose={() => setEscanerAbierto(false)}
-        pacienteId={ingresoPacienteId}
-        onConfirmar={confirmarDocumento}
+        onConfirmar={manejarEscaneoConfirmado}
+        mensajeExito="El documento quedó listo — se adjuntará al paciente al hacer clic en 'Guardar paciente'."
+      />
+      <EscaneoQRModal
+        open={escaneoQRAbierto}
+        onClose={() => setEscaneoQRAbierto(false)}
+        onConfirmar={manejarEscaneoConfirmado}
       />
     </div>
   );

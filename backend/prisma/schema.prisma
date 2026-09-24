@@ -48,6 +48,7 @@ model Usuario {
   logs             LogActividad[]  @relation("LogActividadUsuario")
   passwordResetTokens PasswordResetToken[]
   documentosRegistrados DocumentoPaciente[] @relation("DocumentoRegistradoPor")
+  gastosRegistrados GastoHospital[] @relation("GastoRegistradoPor")
 }
 
 // Sprint 2: tokens de recuperacion de contrasena. Se guarda el hash SHA-256
@@ -154,7 +155,6 @@ model Paciente {
   medicoReferente    MedicoReferente?     @relation(fields: [medicoReferenteId], references: [id])
   maternidad         RegistroMaternidad?
   egresoClinico      EgresoClinico?
-  anexos             AnexoPaciente[]
   documentos         DocumentoPaciente[]
   diagnosticos       Diagnostico[]
   tratamientos       TratamientoItem[]
@@ -189,29 +189,18 @@ model EgresoClinico {
   paciente Paciente @relation(fields: [pacienteId], references: [id])
 }
 
-// Sprint 1: repositorio general de anexos y expedientes escaneados a nivel
-// de paciente, independiente de los adjuntos de estudios del diagnostico.
-// El contenido binario vive cifrado en el volumen de uploads; esta fila
-// solo guarda metadatos no sensibles (el nombre interno es aleatorio).
-model AnexoPaciente {
-  id             Int      @id @default(autoincrement())
-  pacienteId     Int
-  nombreOriginal String
-  nombreArchivo  String   // nombre interno aleatorio generado por el servidor
-  mimeType       String
-  tamano         Int
-  creadoEn       DateTime @default(now())
-
-  paciente Paciente @relation(fields: [pacienteId], references: [id])
-
-  @@index([pacienteId])
-}
-
-// Cambios2 Sprint 5: documentos del paciente generados por el escaner de
-// camara (PDF de una o varias paginas procesadas). El binario se almacena
-// cifrado (AES-256-GCM) en el volumen de documentos; esta fila guarda
-// metadatos no sensibles, checksum de integridad y auditoria de creacion.
-// La eliminacion es logica (eliminadoEn) segun politica de retencion.
+// Cambios2 Sprint 5: documentos del paciente (PDF del escaner de camara con
+// una o varias paginas, o cualquier otro archivo escaneado del paciente:
+// identificaciones, referencias, constancias). Fusiona lo que antes eran dos
+// modulos separados -- "Documentos escaneados" y "Anexos" -- que guardaban
+// exactamente lo mismo con dos APIs distintas (decision del 23/09/2026,
+// migracion de datos en scripts/migrar-anexos-a-documentos.js). No incluye
+// resultados de examenes: esos siguen ligados al diagnostico (ver
+// DiagnosticoArchivo), porque llevan historial clinico versionado que este
+// modulo no tiene. El binario se almacena cifrado (AES-256-GCM) en el
+// volumen de documentos; esta fila guarda metadatos no sensibles, checksum
+// de integridad y auditoria de creacion. La eliminacion es logica
+// (eliminadoEn) segun politica de retencion.
 model DocumentoPaciente {
   id             Int       @id @default(autoincrement())
   pacienteId     Int
@@ -222,6 +211,10 @@ model DocumentoPaciente {
   checksum       String    // SHA-256 del binario original para integridad
   paginas        Int       @default(1)
   tipoDocumental String?   // ej. "identificacion", "expediente", "constancia"
+  // Dev-Mari: fecha escrita en el papel original (cuando el doctor lo lleno),
+  // extraida por OCR o capturada a mano. Distinta de creadoEn, que es cuando
+  // el registro se creo en el sistema.
+  fechaDocumentoOriginal DateTime?
   registradoPor  Int
   creadoEn       DateTime  @default(now())
   eliminadoEn    DateTime?
@@ -243,6 +236,15 @@ model RegistroMaternidad {
   hora              String?
   sexo              String?
   condicionEgresoBebe String?
+
+  // Dev-Mari: datos del bebe y de sus padres al registrar el nacimiento. La
+  // madre es la propia paciente (ya esta registrada); del padre no hay
+  // registro previo, por eso se captura aqui. Todo opcional: el recien
+  // nacido puede no tener nombre ni DPI/CUI al momento del parto.
+  bebeNombre        String?
+  padreNombre       String?
+  padreDpi          String?
+  padreTelefono     String?
 
   paciente Paciente @relation(fields: [pacienteId], references: [id])
 }
@@ -372,6 +374,52 @@ model FacturaHospital {
 
   @@index([pacienteId])
   @@index([creadoEn])
+}
+
+// 23/09/2026: catalogo editable de categorias fiscales para clasificar los
+// gastos del hospital (IVA general, Pequeno Contribuyente, regimenes de
+// ISR, etc). Editable por el Administrador -- las tasas y regimenes de la
+// SAT cambian, asi que no se dejan fijas en el codigo. "tasa" es solo
+// informativa (para mostrarla junto al nombre); el calculo real del
+// impuesto lo sigue haciendo el contador del hospital.
+model CategoriaFiscal {
+  id       Int      @id @default(autoincrement())
+  nombre   String   @unique // ej. "IVA general (12%)", "Pequeno Contribuyente"
+  tasa     Decimal? @db.Decimal(5, 2) // porcentaje informativo, ej. 12.00
+  activo   Boolean  @default(true)
+  creadoEn DateTime @default(now())
+
+  gastos GastoHospital[]
+}
+
+// 23/09/2026: gastos del hospital (compras, servicios, proveedores, etc.),
+// para que el Area Financiera calcule el ingreso neto (ingresos - gastos).
+// Deliberadamente NO se llama "Egreso": ese nombre ya lo usa el Egreso
+// Clinico del paciente (medico, no financiero) y hubiera chocado. Modulo
+// pedido por el equipo (Diego); pendiente de que Don Felix confirme si lo
+// quiere entregado o solo se queda desarrollado (igual que los reportes de
+// credito fiscal/contribuyente descartados antes).
+model GastoHospital {
+  id                Int       @id @default(autoincrement())
+  fecha             DateTime  // fecha de la factura/gasto (puede diferir de creadoEn)
+  proveedor         String
+  descripcion       String?
+  numeroFactura     String?
+  monto             Decimal   @db.Decimal(10, 2)
+  categoriaFiscalId Int?
+  // 24/09/2026: monto*tasa de la categoria elegida, calculado y congelado al
+  // momento de registrar el gasto (no se recalcula si luego cambia la tasa
+  // de la categoria, para no alterar gastos ya capturados). Es informativo
+  // -- el calculo real del impuesto lo sigue haciendo el contador.
+  montoImpuestoEstimado Decimal? @db.Decimal(10, 2)
+  registradoPor     Int
+  creadoEn          DateTime  @default(now())
+
+  categoriaFiscal CategoriaFiscal? @relation(fields: [categoriaFiscalId], references: [id])
+  registrador     Usuario         @relation("GastoRegistradoPor", fields: [registradoPor], references: [id])
+
+  @@index([fecha])
+  @@index([categoriaFiscalId])
 }
 
 // RF-20/RF-24/RF-27: factura de farmacia (cabecera). Agrupa una o mas

@@ -4,8 +4,9 @@ import { Modal } from "./Modal";
 import { Button } from "./Button";
 import { Banner } from "./Banner";
 import { COLORS } from "../styles/tokens";
-import { procesarEscaneoAutomatico } from "../utils/scanProcessing";
-import { generarPdfDePaginas, validarPdf, descargarPdf, nombreDescarga, tamanoLegibleMB } from "../utils/pdfDocumentos";
+import { procesarEscaneoAutomatico, idAleatorio } from "../utils/scanProcessing";
+import { generarPdfDePaginas, validarPdf, descargarPdf, nombreDescarga, tamanoLegibleMB, renderizarPrimeraPaginaPdf, esPdf } from "../utils/pdfDocumentos";
+import { extraerDatosBasicos } from "../utils/ocrDatosBasicos";
 
 // Escaner documental automatico (Cambios2): como un escaner de impresion —
 // se toma la foto o se sube el archivo y el sistema detecta los bordes,
@@ -36,7 +37,7 @@ function archivoValido(file) {
   if (!file || file.size <= 0) return "El archivo está vacío o corrupto.";
   if (file.size > SCAN_CONFIG.MB_MAX_ENTRADA * 1024 * 1024) return `La imagen excede el máximo de ${SCAN_CONFIG.MB_MAX_ENTRADA} MB.`;
   if (!SCAN_CONFIG.TIPOS_ENTRADA.includes(file.type) && !/\.(jpe?g|png|heic)$/i.test(file.name)) {
-    return "Formato no permitido: use JPG, PNG o HEIC.";
+    return "Formato no permitido: use JPG, PNG, HEIC o PDF.";
   }
   return null;
 }
@@ -62,7 +63,16 @@ function dataUrlDesdeArchivo(file) {
   });
 }
 
-export function CameraScannerModal({ open, onClose, titulo = "Escanear documento" }) {
+export function CameraScannerModal({
+  open,
+  onClose,
+  pacienteId,
+  onConfirmar,
+  titulo = "Escanear documento del paciente",
+  // Dev-Mari: al escanear antes de registrar (sin pacienteId), el documento
+  // todavia no se guardo en el servidor, solo quedo listo en el formulario.
+  mensajeExito = "El documento se guardó en el expediente del paciente.",
+}) {
   const [estado, setEstado] = useState("idle");
   const [error, setError] = useState(null);
   const [aviso, setAviso] = useState(null); // "Página 2 escaneada y agregada"
@@ -161,7 +171,7 @@ export function CameraScannerModal({ open, onClose, titulo = "Escanear documento
         procesarEscaneoAutomatico(dataUrl, { maxAncho: SCAN_CONFIG.CAMERA_MAX_WIDTH }),
         new Promise((_, reject) => setTimeout(() => reject(new Error("El procesamiento tardó demasiado; intente de nuevo.")), SCAN_CONFIG.TIMEOUT_PROCESAMIENTO_MS)),
       ]);
-      setPaginas((p) => [...p, { id: crypto.randomUUID(), dataUrl: canvas.toDataURL("image/jpeg", 0.9) }]);
+      setPaginas((p) => [...p, { id: idAleatorio(), dataUrl: canvas.toDataURL("image/jpeg", 0.9) }]);
       setAviso(`Página ${paginas.length + 1} escaneada: bordes y perspectiva corregidos automáticamente.`);
       setEstado(camaraActiva ? "capturando" : "idle");
     } catch (err) {
@@ -175,10 +185,43 @@ export function CameraScannerModal({ open, onClose, titulo = "Escanear documento
     escanearAutomaticamente(dataUrlDesdeVideo(videoRef.current, SCAN_CONFIG.CAMERA_MAX_WIDTH));
   }
 
+  // Dev-Mari: un PDF ya viene de un escaner fisico (impresora) — no es una
+  // foto que haya que enderezar. Se usa tal cual, sin pasar por deteccion de
+  // bordes ni correccion de perspectiva, y se va directo a leer los datos
+  // basicos y confirmar.
+  async function manejarArchivoPdf(file) {
+    setError(null);
+    setAviso(null);
+    setEstado("extrayendo_datos");
+    try {
+      const bytes = await file.arrayBuffer();
+      const { dataUrl, totalPaginas } = await renderizarPrimeraPaginaPdf(bytes);
+      const datosBasicos = await extraerDatosBasicos([dataUrl]);
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      const nombre = nombreDescarga(pacienteId);
+      setPdfResultado({ blob, paginas: totalPaginas, nombre });
+      setEstado("confirmado");
+      if (onConfirmar) {
+        try {
+          await onConfirmar(blob, { paginas: totalPaginas, nombre, datosBasicos });
+        } catch (err) {
+          setError("El documento se generó, pero no se pudo guardar: " + err.message + " Use 'Descargar copia' para no perderlo.");
+        }
+      }
+    } catch (err) {
+      setError("No se pudo leer el PDF (¿está dañado o protegido con contraseña?): " + err.message);
+      setEstado("error");
+    }
+  }
+
   async function manejarArchivo(evento) {
     const file = evento.target.files?.[0];
     evento.target.value = "";
     if (!file) return;
+    if (esPdf(file)) {
+      await manejarArchivoPdf(file);
+      return;
+    }
     const invalido = archivoValido(file);
     if (invalido) {
       setError(invalido);
@@ -200,10 +243,7 @@ export function CameraScannerModal({ open, onClose, titulo = "Escanear documento
 
   // ---- PDF final ----
 
-  // Sin paciente asignado (preparado para el OCR futuro que autoguardara un
-  // paciente a partir del documento): al terminar se genera el PDF y se
-  // descarga localmente, sin vincularlo a ningun expediente existente.
-  async function terminarYDescargar() {
+  async function terminarYGuardar() {
     setFinalizando(true);
     setError(null);
     try {
@@ -214,11 +254,24 @@ export function CameraScannerModal({ open, onClose, titulo = "Escanear documento
         setEstado("error");
         return;
       }
-      const nombre = nombreDescarga();
-      descargarPdf(blob, nombre);
+      const nombre = nombreDescarga(pacienteId);
+
+      // Lectura automatica de nombre/DPI/telefono/fecha (solo la primera
+      // pagina). Nunca bloquea el guardado: si falla o no reconoce nada,
+      // el formulario se sigue llenando a mano.
+      setEstado("extrayendo_datos");
+      const datosBasicos = await extraerDatosBasicos(paginas.map((p) => p.dataUrl));
+
       setPdfResultado({ blob, paginas: total, nombre });
       setEstado("confirmado");
       detenerCamara();
+      if (onConfirmar) {
+        try {
+          await onConfirmar(blob, { paginas: total, nombre, datosBasicos });
+        } catch (err) {
+          setError("El documento se generó, pero no se pudo guardar en el expediente: " + err.message + " Use 'Descargar copia' para no perderlo.");
+        }
+      }
     } catch (err) {
       setError(err.message || "Error al generar el PDF.");
       setEstado("error");
@@ -266,6 +319,13 @@ export function CameraScannerModal({ open, onClose, titulo = "Escanear documento
         </div>
       )}
 
+      {estado === "extrayendo_datos" && (
+        <div className="py-10 text-center">
+          <RefreshCw size={28} className="animate-spin mx-auto" style={{ color: COLORS.navy }} />
+          <p className="text-sm mt-3" style={{ color: "#666" }}>Generando el PDF y leyendo los datos básicos del documento…</p>
+        </div>
+      )}
+
       {/* Acciones de captura */}
       {(estado === "idle" || estado === "capturando" || estado === "solicitando_permiso" || estado === "error") && (
         <div className="flex flex-wrap gap-2 items-center">
@@ -281,9 +341,9 @@ export function CameraScannerModal({ open, onClose, titulo = "Escanear documento
             )
           )}
           <Button variant="secondary" onClick={() => inputRef.current?.click()}>
-            <span className="flex items-center gap-1.5"><ImagePlus size={15} /> Subir imagen</span>
+            <span className="flex items-center gap-1.5"><ImagePlus size={15} /> Subir imagen o PDF del escáner</span>
           </Button>
-          <input ref={inputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={manejarArchivo} aria-label="Subir imagen del documento" />
+          <input ref={inputRef} type="file" accept="image/*,.pdf,application/pdf" className="hidden" onChange={manejarArchivo} aria-label="Subir imagen o PDF del documento" />
           {estado === "capturando" && (
             <Button variant="secondary" onClick={detenerCamara}>
               <span className="flex items-center gap-1.5"><X size={15} /> Detener cámara</span>
@@ -318,8 +378,8 @@ export function CameraScannerModal({ open, onClose, titulo = "Escanear documento
             ))}
           </div>
           <div className="mt-3">
-            <Button onClick={terminarYDescargar} disabled={finalizando}>
-              {finalizando ? "Generando PDF…" : `Terminar y descargar PDF (${paginas.length} página${paginas.length === 1 ? "" : "s"})`}
+            <Button onClick={terminarYGuardar} disabled={finalizando}>
+              {finalizando ? "Generando PDF…" : `Terminar y guardar en el expediente (${paginas.length} página${paginas.length === 1 ? "" : "s"})`}
             </Button>
           </div>
         </div>
@@ -330,11 +390,11 @@ export function CameraScannerModal({ open, onClose, titulo = "Escanear documento
         <div className="mt-2">
           <Banner tone="success">
             PDF generado automáticamente: {pdfResultado.paginas} página{pdfResultado.paginas === 1 ? "" : "s"}, {tamanoLegibleMB(pdfResultado.blob.size)}.
-            Se descargó al equipo como "{pdfResultado.nombre}".
+            {onConfirmar ? ` ${mensajeExito}` : " Descargue la copia local; aún no hay persistencia configurada."}
           </Banner>
           <div className="flex gap-2 mt-3">
             <Button variant="secondary" onClick={() => descargarPdf(pdfResultado.blob, pdfResultado.nombre)}>
-              <span className="flex items-center gap-1.5"><Download size={14} /> Descargar de nuevo</span>
+              <span className="flex items-center gap-1.5"><Download size={14} /> Descargar copia</span>
             </Button>
             <Button variant="secondary" onClick={cerrar}>Cerrar</Button>
           </div>

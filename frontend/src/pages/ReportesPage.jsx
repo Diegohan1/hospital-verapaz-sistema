@@ -23,6 +23,27 @@ function formatoMes(mes) {
   const [y, m] = mes.split("-").map(Number);
   return new Date(y, m - 1, 1).toLocaleDateString("es-GT", { month: "short", year: "2-digit" });
 }
+// El periodo llega como "2026-09" (mes), "2026-09-14" (lunes de la semana) o
+// "2026-09-20" (dia), ya calculado en la zona horaria del hospital.
+const GRANULARIDADES = [
+  { valor: "dia", texto: "Por día" },
+  { valor: "semana", texto: "Por semana" },
+  { valor: "mes", texto: "Por mes" },
+];
+const TITULO_PERIODO = { dia: "día", semana: "semana", mes: "mes" };
+
+function formatoPeriodo(periodo, granularidad) {
+  if (granularidad === "mes") return formatoMes(periodo);
+  const [y, m, d] = periodo.split("-").map(Number);
+  const corto = new Date(y, m - 1, d).toLocaleDateString("es-GT", { day: "2-digit", month: "2-digit" });
+  return granularidad === "semana" ? `Sem. ${corto}` : corto;
+}
+function etiquetaCompleta(periodo, granularidad) {
+  if (granularidad === "mes") return formatoMes(periodo);
+  const [y, m, d] = periodo.split("-").map(Number);
+  const completo = new Date(y, m - 1, d).toLocaleDateString("es-GT", { day: "2-digit", month: "2-digit", year: "numeric" });
+  return granularidad === "semana" ? `Semana del lunes ${completo}` : completo;
+}
 function formatoQ(v) {
   return `Q${Number(v).toLocaleString()}`;
 }
@@ -49,7 +70,8 @@ export function ReportesPage() {
   const { data: financiero } = useFetch(conRango("/reportes/financiero"));
   const { data: admisiones } = useFetch(conRango("/reportes/admisiones"));
   const { data: porFormaPago } = useFetch(conRango("/reportes/facturacion-por-forma-pago"));
-  const { data: ingresosPorMes } = useFetch(conRango("/reportes/ingresos-por-mes"));
+  const [granularidad, setGranularidad] = useState("mes");
+  const { data: ingresosPorMes } = useFetch(conRango(`/reportes/ingresos-por-mes?granularidad=${granularidad}`));
   const kardexPag = usePaginatedFetch(conRango("/reportes/inventario-kardex"), { pageSize: 20 });
 
   const datosAdmisiones = (admisiones?.porCondicionEgreso || []).map((c) => ({
@@ -110,7 +132,7 @@ export function ReportesPage() {
         <p className="text-xs mb-2.5" style={{ color: "#888" }}>El rango aplica a todas las gráficas y tablas de esta página.</p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-4">
         <Card>
           <div className="text-xs font-semibold" style={{ color: "#888" }}>INGRESOS HOSPITAL</div>
           <div className="text-2xl font-bold mt-1" style={{ color: COLORS.navy }}>Q {financiero?.ingresosHospital?.toLocaleString() ?? "—"}</div>
@@ -123,18 +145,64 @@ export function ReportesPage() {
           <div className="text-xs font-semibold" style={{ color: "#888" }}>TOTAL CONSOLIDADO</div>
           <div className="text-2xl font-bold mt-1" style={{ color: COLORS.text }}>Q {financiero?.totalConsolidado?.toLocaleString() ?? "—"}</div>
         </Card>
+        <Card>
+          <div className="text-xs font-semibold" style={{ color: "#888" }}>GASTOS DEL HOSPITAL</div>
+          <div className="text-2xl font-bold mt-1" style={{ color: COLORS.red }}>Q {financiero?.totalGastos?.toLocaleString() ?? "—"}</div>
+        </Card>
+        <Card>
+          <div className="text-xs font-semibold" style={{ color: "#888" }}>INGRESO NETO</div>
+          <div className="text-2xl font-bold mt-1" style={{ color: (financiero?.ingresoNeto ?? 0) >= 0 ? COLORS.navy : COLORS.red }}>Q {financiero?.ingresoNeto?.toLocaleString() ?? "—"}</div>
+        </Card>
       </div>
 
+      {financiero?.gastosPorCategoria?.length > 0 && (
+        <Card style={{ marginBottom: 16 }}>
+          <div className="font-semibold text-sm mb-1">Gastos por categoría fiscal</div>
+          <p className="text-xs mb-3" style={{ color: "#888" }}>
+            Desglose del período elegido, con el impuesto estimado de cada categoría — captura y corrección en
+            "Gastos del Hospital".
+          </p>
+          <Table
+            headers={["Categoría fiscal", "Monto", "Impuesto estimado"]}
+            rows={financiero.gastosPorCategoria}
+            renderRow={(g) => (
+              <>
+                <td className="px-4 py-3">{g.categoria}</td>
+                <td className="px-4 py-3 font-semibold">Q{g.total.toLocaleString()}</td>
+                <td className="px-4 py-3" style={{ color: "#666" }}>{g.impuestoEstimado ? `Q${g.impuestoEstimado.toLocaleString()}` : "—"}</td>
+              </>
+            )}
+          />
+        </Card>
+      )}
+
       <Card style={{ marginBottom: 16 }}>
-        <div className="font-semibold text-sm mb-1">Ingresos por mes</div>
-        <p className="text-xs mb-3" style={{ color: "#888" }}>Hospital vs. farmacia, agrupado por mes (RF-21)</p>
+        <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
+          <div>
+            <div className="font-semibold text-sm mb-1">Ingresos por {TITULO_PERIODO[granularidad]}</div>
+            <p className="text-xs" style={{ color: "#888" }}>Hospital vs. farmacia, agrupado por {TITULO_PERIODO[granularidad]} (RF-21). Solo aparecen los períodos con movimiento.</p>
+          </div>
+          <div className="flex gap-1" role="group" aria-label="Agrupar ingresos por">
+            {GRANULARIDADES.map((g) => (
+              <button
+                key={g.valor}
+                onClick={() => setGranularidad(g.valor)}
+                aria-pressed={granularidad === g.valor}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold"
+                style={granularidad === g.valor ? { backgroundColor: COLORS.navy, color: "white" } : { border: `1px solid ${COLORS.border}`, color: COLORS.text }}
+              >
+                {g.texto}
+              </button>
+            ))}
+          </div>
+        </div>
         {ingresosPorMes?.length ? (
           <ResponsiveContainer width="100%" height={280}>
             <BarChart data={ingresosPorMes} margin={{ top: 8, right: 8, left: 0, bottom: 0 }} barGap={4}>
               <CartesianGrid vertical={false} stroke={COLORS.border} />
-              <XAxis dataKey="mes" tickFormatter={formatoMes} tick={tickStyle} axisLine={{ stroke: COLORS.border }} tickLine={false} />
+              <XAxis dataKey="periodo" tickFormatter={(p) => formatoPeriodo(p, granularidad)} tick={tickStyle} axisLine={{ stroke: COLORS.border }} tickLine={false} />
               <YAxis tickFormatter={formatoQ} tick={tickStyle} axisLine={false} tickLine={false} width={72} />
-              <Tooltip formatter={(v, name) => [formatoQ(v), name]} labelFormatter={formatoMes} contentStyle={tooltipStyle} cursor={{ fill: COLORS.lightBg }} />
+              <Tooltip formatter={(v, name) => [formatoQ(v), name]} labelFormatter={(p) => etiquetaCompleta(p, granularidad)} contentStyle={tooltipStyle} cursor={{ fill: COLORS.lightBg }} />
               <Legend wrapperStyle={{ fontSize: 12 }} formatter={(value) => <span style={{ color: COLORS.textMuted }}>{value}</span>} />
               <Bar dataKey="ingresosHospital" name="Hospital" fill={COLORS.navy} radius={[4, 4, 0, 0]} maxBarSize={28} />
               <Bar dataKey="ingresosFarmacia" name="Farmacia" fill={COLORS.gold} radius={[4, 4, 0, 0]} maxBarSize={28} />
@@ -296,8 +364,10 @@ export function ReportesPage() {
                 <option value="">Todas</option>
                 {["login", "logout", "crear_paciente", "actualizar_paciente", "crear_usuario", "actualizar_usuario",
                   "crear_receta", "registrar_tratamiento", "generar_factura_hospital", "venta_farmacia",
-                  "entrada_inventario", "salida_uso_intrahospitalario", "registrar_visita", "ver_anexos",
-                  "subir_anexos", "descargar_anexo", "solicitar_reset_password", "reset_password"].map((a) => (
+                  "entrada_inventario", "salida_uso_intrahospitalario", "registrar_visita", "subir_documento",
+                  "descargar_documento", "eliminar_documento", "registrar_gasto", "eliminar_gasto",
+                  "crear_categoria_fiscal", "actualizar_categoria_fiscal",
+                  "solicitar_reset_password", "reset_password"].map((a) => (
                   <option key={a} value={a}>{a}</option>
                 ))}
               </select>

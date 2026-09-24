@@ -4,7 +4,15 @@
 // margenes y orientacion consistentes. El PDF es visual: no contiene texto
 // extraido (sin OCR).
 import { jsPDF } from "jspdf";
+import * as pdfjsLib from "pdfjs-dist";
+import pdfjsWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { canvasDesdeDataUrl } from "./scanProcessing";
+
+export function esPdf(file) {
+  return file?.type === "application/pdf" || /\.pdf$/i.test(file?.name || "");
+}
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorkerUrl;
 
 export const TAMANOS_PDF = {
   A4: { formato: "a4", ancho: 210, alto: 297 },
@@ -58,10 +66,12 @@ export async function generarPdfDePaginas(paginas, { tamano = DOCUMENTO_CONFIG.T
   return { blob: pdf.output("blob"), paginas: insertadas };
 }
 
-export function nombreDescarga() {
+export function nombreDescarga(pacienteId) {
   const fecha = new Date().toISOString().slice(0, 10).replace(/-/g, "");
   const hora = new Date().toTimeString().slice(0, 5).replace(":", "");
-  return `documento-escaneado-${fecha}${hora}.pdf`;
+  // Dev-Mari: al escanear antes de registrar al paciente, todavia no hay id.
+  const sujeto = pacienteId ? `paciente-${pacienteId}` : "paciente-nuevo";
+  return `documento-${sujeto}-${fecha}${hora}.pdf`;
 }
 
 export function tamanoLegibleMB(bytes) {
@@ -89,6 +99,34 @@ export function descargarPdf(blob, nombre) {
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
+}
+
+// Dev-Mari: cuando el documento ya viene escaneado por el software de un
+// escaner/impresora (no por la camara de este sistema), se sube el PDF tal
+// cual — no pasa por deteccion de bordes ni correccion de perspectiva,
+// porque ya es un escaneo limpio. Estas funciones lo leen para: (a) saber
+// cuantas paginas trae y (b) renderizar la primera como imagen, que es lo
+// unico que necesita el OCR de datos basicos.
+export async function leerInfoPdf(arrayBuffer) {
+  // pdf.js puede transferir (vaciar) el ArrayBuffer que recibe al pasarlo a
+  // su worker interno. Se le pasa una copia independiente para que el
+  // buffer original — que quien llama suele seguir usando para armar el
+  // Blob que se sube al servidor — no quede vacio despues de esta llamada
+  // (si quedara vacio, el backend rechazaria el PDF como "no valido" aunque
+  // el archivo original estuviera perfectamente bien).
+  const doc = await pdfjsLib.getDocument({ data: arrayBuffer.slice(0) }).promise;
+  return { totalPaginas: doc.numPages, doc };
+}
+
+export async function renderizarPrimeraPaginaPdf(arrayBuffer) {
+  const { doc, totalPaginas } = await leerInfoPdf(arrayBuffer);
+  const pagina = await doc.getPage(1);
+  const viewport = pagina.getViewport({ scale: 2 });
+  const canvas = document.createElement("canvas");
+  canvas.width = viewport.width;
+  canvas.height = viewport.height;
+  await pagina.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+  return { dataUrl: canvas.toDataURL("image/jpeg", 0.9), totalPaginas };
 }
 
 export { canvasDesdeDataUrl };

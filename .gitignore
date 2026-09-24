@@ -4,3 +4,5 @@ dist/
 *.log
 backend/backups/
 backend/uploads/
+frontend/.cert/*.pem
+frontend/.cert/*.cnf

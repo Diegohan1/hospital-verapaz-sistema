@@ -4,6 +4,7 @@
 // Sprint 6: los totales monetarios se redondean a 2 decimales antes de
 // persistirse, para evitar arrastres de coma flotante en los reportes.
 import { prisma } from "../config/prisma.js";
+import { rangoFecha } from "../utils/periodos.util.js";
 
 function round2(valor) {
   return Number(valor.toFixed(2));
@@ -101,24 +102,50 @@ export async function registrarVentaFarmacia({ pacienteId, items, registradoPor 
 
 // RF-21: reporte financiero consolidado (hospital + farmacia, por separado y en conjunto)
 export async function reporteConsolidado({ desde, hasta } = {}) {
-  const rangoFecha = {};
-  if (desde) rangoFecha.gte = new Date(desde);
-  if (hasta) rangoFecha.lte = new Date(hasta);
-  const where = Object.keys(rangoFecha).length ? { creadoEn: rangoFecha } : undefined;
+  const rango = rangoFecha(desde, hasta);
+  const where = rango ? { creadoEn: rango } : undefined;
+  // Gastos usa "fecha" (la de la factura del proveedor), no "creadoEn" (la
+  // de captura en el sistema) -- mismo criterio que fechaDocumentoOriginal
+  // en Documentos: lo que importa para el periodo contable es la fecha real
+  // del gasto, no cuando se tecleo.
+  const whereGastos = rango ? { fecha: rango } : undefined;
 
-  const [facturasHospital, facturasFarmacia] = await Promise.all([
+  const [facturasHospital, facturasFarmacia, gastos] = await Promise.all([
     prisma.facturaHospital.findMany({ where }),
     prisma.facturaFarmacia.findMany({ where }),
+    prisma.gastoHospital.findMany({ where: whereGastos, include: { categoriaFiscal: { select: { nombre: true } } } }),
   ]);
 
   const ingresosHospital = facturasHospital.reduce((suma, f) => suma + Number(f.total), 0);
   const ingresosFarmacia = facturasFarmacia.reduce((suma, f) => suma + Number(f.montoTotal), 0);
+  const totalConsolidado = ingresosHospital + ingresosFarmacia;
+  const totalGastos = gastos.reduce((suma, g) => suma + Number(g.monto), 0);
+  const totalImpuestosEstimados = gastos.reduce((suma, g) => suma + Number(g.montoImpuestoEstimado || 0), 0);
+
+  // Desglose de gastos por categoria fiscal (monto y su impuesto estimado),
+  // para revisar antes de declarar.
+  const porCategoria = {};
+  for (const g of gastos) {
+    const clave = g.categoriaFiscal?.nombre || "Sin clasificar";
+    if (!porCategoria[clave]) porCategoria[clave] = { total: 0, impuestoEstimado: 0 };
+    porCategoria[clave].total += Number(g.monto);
+    porCategoria[clave].impuestoEstimado += Number(g.montoImpuestoEstimado || 0);
+  }
 
   return {
     ingresosHospital: Number(ingresosHospital.toFixed(2)),
     ingresosFarmacia: Number(ingresosFarmacia.toFixed(2)),
-    totalConsolidado: Number((ingresosHospital + ingresosFarmacia).toFixed(2)),
+    totalConsolidado: Number(totalConsolidado.toFixed(2)),
+    totalGastos: Number(totalGastos.toFixed(2)),
+    totalImpuestosEstimados: Number(totalImpuestosEstimados.toFixed(2)),
+    ingresoNeto: Number((totalConsolidado - totalGastos).toFixed(2)),
+    gastosPorCategoria: Object.entries(porCategoria).map(([categoria, v]) => ({
+      categoria,
+      total: Number(v.total.toFixed(2)),
+      impuestoEstimado: Number(v.impuestoEstimado.toFixed(2)),
+    })),
     cantidadFacturasHospital: facturasHospital.length,
     cantidadFacturasFarmacia: facturasFarmacia.length,
+    cantidadGastos: gastos.length,
   };
 }

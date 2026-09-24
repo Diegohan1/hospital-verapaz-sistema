@@ -34,7 +34,8 @@ services:
       NOTIFICACION_PROVEEDOR: ${NOTIFICACION_PROVEEDOR:-consola}
       APP_URL: ${APP_URL:-http://localhost:8080}
       UPLOAD_MAX_MB_ESTUDIOS: ${UPLOAD_MAX_MB_ESTUDIOS:-5}
-      UPLOAD_MAX_MB_ANEXOS: ${UPLOAD_MAX_MB_ANEXOS:-15}
+      DOCUMENT_MAX_MB: ${DOCUMENT_MAX_MB:-20}
+      DOCUMENT_MAX_PAGES: ${DOCUMENT_MAX_PAGES:-30}
       SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@hospitalverapaz.gt}
       SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-CambiarEsta123}
       # Migraciones y seed controlados en el primer arranque (idempotentes).

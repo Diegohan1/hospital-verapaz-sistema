@@ -1,16 +1,32 @@
-// Controlador: Documentos del paciente generados por el escaner de camara
-// (Cambios2, Sprint 5). El binario (PDF) se cifra con AES-256-GCM antes de
-// persistirlo en el volumen privado uploads/documentos; la tabla guarda
-// solo metadatos no sensibles, checksum de integridad y auditoria. La
-// descarga siempre pasa por esta API autorizada: el volumen nunca se sirve
-// estaticamente ni expone la ruta fisica.
+// Controlador: Documentos del paciente (Cambios2 Sprint 5 + fusion con
+// Anexos del 23/09/2026 -- ver nota en schema.prisma junto a
+// DocumentoPaciente). Dos usos distintos comparten esta tabla:
+// - El PDF del expediente fisico escaneado al registrar al paciente (solo
+//   PDF, validado aparte en pacientes.controller.js con validarPdf, porque
+//   ahi el paciente todavia no existe).
+// - Documentos generales de un paciente ya existente (subir/listar/descargar
+//   mas abajo): identificaciones, referencias, constancias u otro escaneo
+//   suelto. Admite PDF, PNG o JPG (validarArchivo), igual que antes admitia
+//   el modulo de Anexos. Nunca resultados de examenes: esos van ligados al
+//   diagnostico (DiagnosticoArchivo), porque llevan historial clinico.
+//
+// Protegido por rol (ver pacientes.routes.js), sin token de acceso temporal
+// -- a diferencia del diagnostico y de como era Anexos antes de la fusion:
+// RegistroPage.jsx muestra esta lista dentro de la ficha del paciente sin
+// flujo de token, para admision y personal clinico.
+//
+// El binario se cifra con AES-256-GCM antes de persistirse en el volumen
+// privado uploads/documentos; la tabla guarda solo metadatos no sensibles,
+// checksum de integridad y auditoria. La descarga siempre pasa por esta API
+// autorizada: el volumen nunca se sirve estaticamente ni expone la ruta
+// fisica.
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "crypto";
 import multer from "multer";
 import { prisma } from "../config/prisma.js";
 import { leerArchivoCifrado } from "../utils/crypto.util.js";
-import { guardarArchivoCifrado } from "../utils/archivos.util.js";
+import { guardarArchivoCifrado, validarArchivo } from "../utils/archivos.util.js";
 import { registrarActividad } from "../services/actividad.service.js";
 
 const DOCUMENTOS_DIR = path.join(process.cwd(), "uploads", "documentos");
@@ -29,43 +45,36 @@ export const uploadDocumento = multer({
 const SELECT_METADATOS = {
   id: true, nombreOriginal: true, mimeType: true, tamano: true,
   paginas: true, tipoDocumental: true, checksum: true, creadoEn: true,
+  fechaDocumentoOriginal: true,
   registradoPor: true, registrador: { select: { nombre: true } },
 };
 
 // POST /api/pacientes/:id/documentos
-// Recibe multipart/form-data: campo "documento" (PDF), "nombreOriginal"
-// opcional, "tipoDocumental" opcional y "paginas" opcional. Valida rol,
-// paciente, MIME real (magic bytes), extension, tamano y paginas; calcula
-// checksum y persiste el binario cifrado con nombre interno aleatorio.
+// Recibe multipart/form-data: campo "documento" (PDF, PNG o JPG),
+// "nombreOriginal" opcional, "tipoDocumental" opcional y "paginas" opcional
+// (solo aplica a PDF). Valida rol, paciente, MIME real (magic bytes),
+// extension, tamano y paginas; calcula checksum y persiste el binario
+// cifrado con nombre interno aleatorio.
 export async function subir(req, res) {
   const pacienteId = Number(req.params.id);
   const file = req.file;
-  if (!file) return res.status(400).json({ error: "Adjunte el PDF del documento" });
+  if (!file) return res.status(400).json({ error: "Adjunte un archivo" });
 
-  // Validacion de MIME real por magic bytes (el Content-Type del cliente es
-  // dato no confiable): un PDF siempre empieza con %PDF-
-  const magic = file.buffer.subarray(0, 5).toString("latin1");
-  if (magic !== "%PDF-") {
-    return res.status(422).json({ error: "El archivo no es un PDF válido" });
-  }
-  if (file.mimetype !== "application/pdf") {
-    return res.status(422).json({ error: "El MIME type no corresponde a un PDF" });
-  }
+  const errorArchivo = validarArchivo(file);
+  if (errorArchivo) return res.status(422).json({ error: errorArchivo });
 
-  const nombreOriginal = path.basename(req.body.nombreOriginal || file.originalname || "documento.pdf").replace(/[^\w.\-() ]/g, "_");
-  if (!/\.pdf$/i.test(nombreOriginal)) {
-    return res.status(422).json({ error: "El nombre del documento debe terminar en .pdf" });
-  }
+  const nombreOriginal = path.basename(req.body.nombreOriginal || file.originalname || "documento").replace(/[^\w.\-() ]/g, "_");
 
   const paciente = await prisma.paciente.findUnique({ where: { id: pacienteId }, select: { id: true, nombreCompleto: true, historiaClinica: true } });
   if (!paciente) return res.status(404).json({ error: "Paciente no encontrado" });
 
-  const paginas = Number(req.body.paginas) || 1;
+  // El numero de paginas solo tiene sentido para un PDF; una imagen suelta es 1 pagina.
+  const paginas = file.mimetype === "application/pdf" ? Number(req.body.paginas) || 1 : 1;
   if (!Number.isInteger(paginas) || paginas < 1 || paginas > DOCUMENT_MAX_PAGES) {
     return res.status(422).json({ error: `El número de páginas debe estar entre 1 y ${DOCUMENT_MAX_PAGES}` });
   }
   if (file.size > DOCUMENT_MAX_MB * 1024 * 1024) {
-    return res.status(413).json({ error: `El PDF excede el máximo de ${DOCUMENT_MAX_MB} MB` });
+    return res.status(413).json({ error: `El archivo excede el máximo de ${DOCUMENT_MAX_MB} MB` });
   }
 
   const checksum = crypto.createHash("sha256").update(file.buffer).digest("hex");
@@ -76,11 +85,12 @@ export async function subir(req, res) {
       pacienteId,
       nombreOriginal,
       nombreArchivo,
-      mimeType: "application/pdf",
+      mimeType: file.mimetype,
       tamano: file.size,
       checksum,
       paginas,
       tipoDocumental: req.body.tipoDocumental || null,
+      fechaDocumentoOriginal: req.body.fechaDocumentoOriginal ? new Date(req.body.fechaDocumentoOriginal) : null,
       registradoPor: req.user.id,
     },
     select: SELECT_METADATOS,
@@ -111,7 +121,7 @@ export async function listar(req, res) {
 }
 
 // GET /api/pacientes/:id/documentos/:documentoId — descarga autorizada del
-// PDF (descifrado en memoria); nunca una ruta fisica.
+// documento (descifrado en memoria); nunca una ruta fisica.
 export async function descargar(req, res) {
   const documentoId = Number(req.params.documentoId);
   const documento = await prisma.documentoPaciente.findUnique({
@@ -126,11 +136,14 @@ export async function descargar(req, res) {
   if (!fs.existsSync(ruta)) return res.status(404).json({ error: "El archivo físico del documento no existe" });
 
   try {
-    const pdf = leerArchivoCifrado(ruta, process.env.ENCRYPTION_KEY);
+    const contenido = leerArchivoCifrado(ruta, process.env.ENCRYPTION_KEY);
     await registrarActividad(req.user.id, "descargar_documento", `${documento.nombreOriginal} (paciente ${documento.pacienteId})`);
-    res.setHeader("Content-Type", "application/pdf");
+    // Antes de la fusion con Anexos todo era PDF; ahora tambien puede ser
+    // PNG/JPG, asi que el Content-Type real del archivo importa (si no, el
+    // navegador intenta renderizar una imagen como si fuera un PDF).
+    res.setHeader("Content-Type", documento.mimeType);
     res.setHeader("Content-Disposition", `inline; filename="${documento.nombreOriginal}"`);
-    res.send(pdf);
+    res.send(contenido);
   } catch {
     res.status(500).json({ error: "No se pudo descifrar el documento (¿llave incorrecta o archivo corrupto?)" });
   }

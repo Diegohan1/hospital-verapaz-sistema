@@ -9,15 +9,19 @@
   "scripts": {
     "dev": "node --watch-path=src --watch-path=prisma/schema.prisma src/server.js",
     "start": "node src/server.js",
+    "test": "node --test \"tests/unit/*.test.mjs\"",
+    "test:integracion": "node tests/integracion.smoke.mjs",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "prisma db seed",
     "postinstall": "prisma generate",
     "backup": "node scripts/backup.js",
     "migrar-egreso": "node scripts/migrar-egreso-cifrado.js",
-    "recifrar-archivos": "node scripts/recifrar-archivos.js"
+    "recifrar-archivos": "node scripts/recifrar-archivos.js",
+    "migrar-anexos": "node scripts/migrar-anexos-a-documentos.js"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.127.0",
     "@prisma/client": "^5.19.0",
     "bcrypt": "^5.1.0",
     "cors": "^2.8.5",
@@ -25,7 +29,8 @@
     "express": "^4.19.0",
     "express-async-errors": "^3.1.1",
     "jsonwebtoken": "^9.0.0",
-    "multer": "^2.2.0"
+    "multer": "^2.2.0",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "prisma": "^5.19.0"

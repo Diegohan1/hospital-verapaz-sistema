@@ -2,13 +2,7 @@
 import { prisma } from "../config/prisma.js";
 import { reporteConsolidado } from "../services/facturacion.service.js";
 import { leerPaginacion } from "../utils/paginacion.util.js";
-
-function rangoFecha(desde, hasta) {
-  const rango = {};
-  if (desde) rango.gte = new Date(desde);
-  if (hasta) rango.lte = new Date(hasta);
-  return Object.keys(rango).length ? rango : undefined;
-}
+import { rangoFecha, clavePeriodo, GRANULARIDADES } from "../utils/periodos.util.js";
 
 // Ingresos/egresos del hospital + farmacia en un periodo
 export async function financiero(req, res) {
@@ -51,35 +45,37 @@ export async function facturacionPorFormaPago(req, res) {
 
 // Ingresos de hospital y farmacia agrupados por mes, para el dashboard de
 // tendencia del modulo de Reportes (grafica de lineas/barras en el frontend).
+// Dev-Mari: ?granularidad=dia|semana|mes (por defecto mes). El periodo es
+// "2026-09-20" (dia), el lunes "2026-09-14" (semana) o "2026-09" (mes), siempre
+// calculado en la zona horaria del hospital. Solo aparecen los periodos que
+// tuvieron movimiento.
 export async function ingresosPorMes(req, res) {
   const { desde, hasta } = req.query;
+  const granularidad = GRANULARIDADES.includes(req.query.granularidad) ? req.query.granularidad : "mes";
   const where = { creadoEn: rangoFecha(desde, hasta) };
   const [facturasHospital, facturasFarmacia] = await Promise.all([
     prisma.facturaHospital.findMany({ where, select: { total: true, creadoEn: true } }),
     prisma.facturaFarmacia.findMany({ where, select: { montoTotal: true, creadoEn: true } }),
   ]);
 
-  function clave(fecha) {
-    const d = new Date(fecha);
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  const periodos = {};
+  function bucket(periodo) {
+    if (!periodos[periodo]) periodos[periodo] = { periodo, ingresosHospital: 0, ingresosFarmacia: 0 };
+    return periodos[periodo];
   }
+  facturasHospital.forEach((f) => { bucket(clavePeriodo(f.creadoEn, granularidad)).ingresosHospital += Number(f.total); });
+  facturasFarmacia.forEach((f) => { bucket(clavePeriodo(f.creadoEn, granularidad)).ingresosFarmacia += Number(f.montoTotal); });
 
-  const meses = {};
-  function bucket(mes) {
-    if (!meses[mes]) meses[mes] = { mes, ingresosHospital: 0, ingresosFarmacia: 0 };
-    return meses[mes];
-  }
-  facturasHospital.forEach((f) => { bucket(clave(f.creadoEn)).ingresosHospital += Number(f.total); });
-  facturasFarmacia.forEach((f) => { bucket(clave(f.creadoEn)).ingresosFarmacia += Number(f.montoTotal); });
-
-  const resultado = Object.values(meses)
-    .map((m) => ({
-      mes: m.mes,
-      ingresosHospital: Number(m.ingresosHospital.toFixed(2)),
-      ingresosFarmacia: Number(m.ingresosFarmacia.toFixed(2)),
-      total: Number((m.ingresosHospital + m.ingresosFarmacia).toFixed(2)),
+  const resultado = Object.values(periodos)
+    .map((p) => ({
+      periodo: p.periodo,
+      mes: p.periodo, // alias: la grafica anterior leia "mes"
+      granularidad,
+      ingresosHospital: Number(p.ingresosHospital.toFixed(2)),
+      ingresosFarmacia: Number(p.ingresosFarmacia.toFixed(2)),
+      total: Number((p.ingresosHospital + p.ingresosFarmacia).toFixed(2)),
     }))
-    .sort((a, b) => a.mes.localeCompare(b.mes));
+    .sort((a, b) => a.periodo.localeCompare(b.periodo));
 
   res.json(resultado);
 }

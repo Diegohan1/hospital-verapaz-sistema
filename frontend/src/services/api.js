@@ -29,8 +29,8 @@ async function request(path, options = {}) {
   return body;
 }
 
-// Descarga binaria (anexos cifrados): igual que request() pero devuelve un
-// Blob en lugar de JSON, con los mismos headers de autenticacion.
+// Descarga binaria (documentos/estudios cifrados): igual que request() pero
+// devuelve un Blob en lugar de JSON, con los mismos headers de autenticacion.
 async function requestBlob(path, options = {}) {
   const token = localStorage.getItem("token");
   const res = await fetch(`${BASE_URL}${path}`, {

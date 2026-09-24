@@ -49,6 +49,21 @@ async function main() {
 
   await prisma.catalogoCie10.createMany({ data: CIE10_CATALOGO, skipDuplicates: true });
 
+  // 23/09/2026: categorias fiscales de partida para clasificar Gastos del
+  // Hospital. Son un punto de partida basado en regimenes comunes en
+  // Guatemala -- el Administrador debe confirmarlas/ajustarlas con su
+  // contador antes de usarlas para declarar, las tasas pueden cambiar.
+  await prisma.categoriaFiscal.createMany({
+    data: [
+      { nombre: "IVA general (12%)", tasa: 12 },
+      { nombre: "Pequeño Contribuyente (5%)", tasa: 5 },
+      { nombre: "ISR Régimen sobre Utilidades (25%)", tasa: 25 },
+      { nombre: "ISR Régimen Opcional Simplificado (5%)", tasa: 5 },
+      { nombre: "Sin clasificar", tasa: null },
+    ],
+    skipDuplicates: true,
+  });
+
   console.log("Seed completado.");
   console.log(`Administrador: ${adminEmail} / ${adminPassword}`);
 }

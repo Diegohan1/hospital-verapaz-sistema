@@ -2,6 +2,7 @@ import React from "react";
 import { Printer } from "lucide-react";
 import { Button } from "./Button";
 import { COLORS } from "../styles/tokens";
+import { fechaDia } from "../utils/fechas";
 import logoVerapaz from "../assets/logo-verapaz.png";
 
 function Campo({ label, valor }) {
@@ -74,7 +75,7 @@ export function RecetaImprimible({ receta, patient }) {
             <Campo label="Edad" valor={patient?.edad != null ? `${patient.edad} años` : null} />
             <Campo label="Sexo" valor={patient?.sexo} />
             <Campo label="Teléfono" valor={patient?.telefono} />
-            <Campo label="Fecha de nacimiento" valor={patient?.fechaNacimiento ? new Date(patient.fechaNacimiento).toLocaleDateString() : null} />
+            <Campo label="Fecha de nacimiento" valor={fechaDia(patient?.fechaNacimiento)} />
             <Campo label="DPI" valor={patient?.dpi} />
             <div className="col-span-2"><Campo label="Dirección" valor={patient?.direccion} /></div>
           </div>

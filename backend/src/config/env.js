@@ -35,5 +35,6 @@ export const PASSWORD_RESET_EXPIRES_MIN = Number(process.env.PASSWORD_RESET_EXPI
 // forgot-password mientras no haya proveedor de correo configurado.
 export const PASSWORD_RESET_EXPOSE_TOKEN = process.env.PASSWORD_RESET_EXPOSE_TOKEN === "true";
 // Limites de carga por tipo de archivo (MB), ajustables por configuracion.
+// Los documentos del paciente (antes tambien "anexos", fusionados el
+// 23/09/2026) usan DOCUMENT_MAX_MB, leida directamente en documentos.controller.js.
 export const UPLOAD_MAX_MB_ESTUDIOS = Number(process.env.UPLOAD_MAX_MB_ESTUDIOS || 5);
-export const UPLOAD_MAX_MB_ANEXOS = Number(process.env.UPLOAD_MAX_MB_ANEXOS || 15);
