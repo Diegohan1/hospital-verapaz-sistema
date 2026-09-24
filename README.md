@@ -80,6 +80,78 @@ npm install
 npm run dev                # http://localhost:5173
 ```
 
+## Cómo ejecutar las pruebas E2E (Playwright)
+
+### Opción A: Con Docker (recomendado para CI/CD)
+
+```bash
+# Levantar todo el stack
+docker compose up -d --build
+
+# En otra terminal, ejecutar tests E2E
+cd frontend
+npm run test               # Headless (CI)
+npm run test:headed        # Con navegador visible
+npm run test:ui            # UI interactiva de Playwright
+```
+
+### Opción B: Desarrollo local (sin Docker)
+
+```bash
+# Terminal 1: Backend + Base de datos
+cd backend
+cp .env.example .env
+npm install
+npx prisma migrate deploy
+npm run prisma:seed
+npm run dev
+
+# Terminal 2: Frontend
+cd frontend
+npm install
+npm run dev
+
+# Terminal 3: Tests E2E
+cd frontend
+npm run test               # Headless
+npm run test:headed        # Con navegador visible
+npm run test:ui            # UI interactiva
+```
+
+### Qué cubren los tests E2E
+
+| Archivo | Qué prueba |
+|---------|------------|
+| `tests/auth.spec.ts` | Login, login fallido, recuperación contraseña |
+| `tests/pacientes.spec.ts` | Navegación pestañas, formulario, campos requeridos |
+| `tests/expediente.spec.ts` | Navegación a expediente, botón diagnóstico |
+| `tests/scanner.spec.ts` | Botón escáner, modal, input archivo |
+| `tests/restricted-mode.spec.ts` | Logo botón, modo restringido, persistencia |
+| `tests/*.test.mjs` | Tests unitarios (fechas, OCR, validadores) |
+
+### Artefactos en CI (GitHub Actions)
+
+- **Reporte HTML**: `playwright-report/` (subido como artifact)
+- **Screenshots/videos en fallos**: `test-results/` (subido en fallos)
+- **Cobertura**: Tests unitarios backend (`backend/tests/`)
+
+### Comandos útiles
+
+```bash
+# Ver reporte HTML local
+cd frontend
+npx playwright show-report
+
+# Ejecutar solo un archivo de test
+npx playwright test tests/auth.spec.ts
+
+# Ejecutar en modo debug
+npx playwright test --debug
+
+# Generar reporte de trazabilidad
+npx playwright test --trace on
+```
+
 ## Estado del backend
 
 El backend ya tiene lógica real conectada a Prisma/PostgreSQL (antes eran
