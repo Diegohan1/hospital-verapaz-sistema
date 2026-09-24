@@ -17,7 +17,8 @@
     "postinstall": "prisma generate",
     "backup": "node scripts/backup.js",
     "migrar-egreso": "node scripts/migrar-egreso-cifrado.js",
-    "recifrar-archivos": "node scripts/recifrar-archivos.js"
+    "recifrar-archivos": "node scripts/recifrar-archivos.js",
+    "migrar-anexos": "node scripts/migrar-anexos-a-documentos.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.127.0",

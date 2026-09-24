@@ -25,7 +25,15 @@ router.get("/:id", controller.obtenerUno);
 router.post("/", requireRole(ROLES.RECEPCION, ROLES.ADMIN), documentos.uploadDocumento, controller.crear);
 router.put("/:id", requireRole(ROLES.RECEPCION, ROLES.ADMIN), controller.actualizar);
 
-// Cambios2 Sprint 5: documentos escaneados del paciente (PDF del escaner).
+// Cambios2 Sprint 5 + fusion con Anexos (23/09/2026): documentos generales
+// del paciente ya registrado (identificaciones, referencias, constancias,
+// el expediente escaneado). Protegido por rol, SIN token de acceso temporal
+// -- a diferencia del diagnostico. Se probo exigir token aqui tambien (como
+// hacia Anexos) pero se revirtio: RegistroPage.jsx ya muestra esta lista
+// dentro de la ficha del paciente, sin flujo de token, para que admision y
+// personal clinico la vean de una vez mientras trabajan el expediente; exigir
+// token la habria roto. El nivel de proteccion que sobrevive es el que ya
+// tenia Documentos, no el de Anexos.
 // Escritura: Recepcion/Administracion. Lectura: personal clinico y admision.
 router.get("/:id/documentos", requireRole(ROLES.ADMIN, ROLES.RECEPCION, ROLES.CONSULTA, ROLES.ENFERMERIA), documentos.listar);
 router.get(

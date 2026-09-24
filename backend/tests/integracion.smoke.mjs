@@ -159,45 +159,46 @@ async function main() {
   r = await api("GET", `/expedientes/paciente/${P}`, { token: tk.medico, headers: { "x-temp-token": TOKEN1 } });
   check("el token es de un solo uso (403 al reusar)", r.status === 403, st(r));
 
-  console.log("\n== ANEXOS ==");
+  console.log("\n== DOCUMENTOS DEL PACIENTE (fusion Anexos + Documentos escaneados, 23/09/2026) ==");
+  // Protegido por rol, sin token de acceso temporal (a diferencia del
+  // diagnostico y de como era Anexos antes de la fusion): RegistroPage ya
+  // muestra esta lista dentro de la ficha del paciente sin flujo de token.
   form = new FormData();
-  form.append("archivos", new Blob([PNG], { type: "image/png" }), "anexo.png");
-  r = await api("POST", `/expedientes/anexos/paciente/${P}`, { token: admin, form });
-  check("Admin sube un anexo cifrado", r.status === 201, st(r));
-  const A = r.data?.anexos?.[0]?.id;
-  r = await api("POST", "/auth/token", { token: admin, body: { usuarioId: uid.medico, pacienteId: P } });
-  const T2 = r.data.token;
-  r = await api("GET", `/expedientes/anexos/paciente/${P}`, { token: tk.medico, headers: { "x-temp-token": T2 } });
-  check("medico con token lista los anexos", r.status === 200 && r.data.length === 1, st(r));
-  r = await api("POST", "/auth/token", { token: admin, body: { usuarioId: uid.medico, pacienteId: P } });
-  r = await api("GET", `/expedientes/anexos/${A}/descargar`, { token: tk.medico, headers: { "x-temp-token": r.data.token } });
-  check("medico descarga el anexo (correccion del token por anexo)", r.status === 200 && Buffer.isBuffer(r.data) && r.data.equals(PNG), st(r));
+  form.append("documento", new Blob([PNG], { type: "image/png" }), "anexo.png");
+  r = await api("POST", `/pacientes/${P}/documentos`, { token: admin, form });
+  check("Admin sube un documento (imagen) cifrado", r.status === 201, st(r));
+  const A = r.data?.id;
+  r = await api("GET", `/pacientes/${P}/documentos`, { token: tk.medico });
+  check("medico (rol Consulta) lista los documentos sin necesitar token", r.status === 200 && r.data.length === 1, st(r));
+  r = await api("GET", `/pacientes/${P}/documentos`, { token: tk.fact });
+  check("Facturacion NO puede ver los documentos (403, rol no autorizado)", r.status === 403, st(r));
+  r = await api("GET", `/pacientes/${P}/documentos/${A}`, { token: tk.medico });
+  check("medico descarga el documento y llega con su Content-Type real (imagen, no forzado a PDF)", r.status === 200 && Buffer.isBuffer(r.data) && r.data.equals(PNG), st(r));
   const otro = await api("POST", "/pacientes", { token: tk.recep, body: { nombreCompleto: "SMOKE Otro", dpi: "9000000000002" } });
   creados.pacientes.push(otro.data.id);
-  r = await api("POST", "/auth/token", { token: admin, body: { usuarioId: uid.medico, pacienteId: otro.data.id } });
-  r = await api("GET", `/expedientes/anexos/${A}/descargar`, { token: tk.medico, headers: { "x-temp-token": r.data.token } });
-  check("token de OTRO paciente no descarga el anexo (403)", r.status === 403, st(r));
+  r = await api("GET", `/pacientes/${otro.data.id}/documentos/${A}`, { token: tk.medico });
+  check("el documento de OTRO paciente no se descarga por esa URL (404)", r.status === 404, st(r));
   const JPEG = Buffer.from("ffd8ffe000104a46494600010100000100010000ffd9", "hex");
   form = new FormData();
-  form.append("archivos", new Blob([JPEG], { type: "image/jpeg" }), "IMG_0001.jpeg");
-  r = await api("POST", `/expedientes/anexos/paciente/${P}`, { token: admin, form });
+  form.append("documento", new Blob([JPEG], { type: "image/jpeg" }), "IMG_0001.jpeg");
+  r = await api("POST", `/pacientes/${P}/documentos`, { token: admin, form });
   check("foto .jpeg de celular se acepta (antes solo .jpg)", r.status === 201, st(r));
   form = new FormData();
-  form.append("archivos", new Blob([Buffer.from("<html><script>alert(1)</script></html>")], { type: "image/png" }), "falso.png");
-  r = await api("POST", `/expedientes/anexos/paciente/${P}`, { token: admin, form });
+  form.append("documento", new Blob([Buffer.from("<html><script>alert(1)</script></html>")], { type: "image/png" }), "falso.png");
+  r = await api("POST", `/pacientes/${P}/documentos`, { token: admin, form });
   check("un archivo disfrazado de imagen se rechaza (422)", r.status === 422, st(r));
 
-  console.log("\n== DOCUMENTOS ESCANEADOS ==");
+  console.log("\n== DOCUMENTOS: expediente escaneado (PDF, fechas y borrado) ==");
   const pdf = Buffer.from("%PDF-1.4\n%QA\n1 0 obj<<>>endobj\n");
   form = new FormData();
   form.append("documento", new Blob([pdf], { type: "application/pdf" }), "exp.pdf"); form.append("paginas", "2"); form.append("fechaDocumentoOriginal", "2026-09-10");
   r = await api("POST", `/pacientes/${P}/documentos`, { token: tk.recep, form });
-  check("Recepcion sube documento escaneado", r.status === 201, st(r));
+  check("Recepcion sube documento escaneado (PDF)", r.status === 201, st(r));
   const D = r.data?.id;
-  r = await api("GET", `/pacientes/${P}/documentos/${D}`, { token: tk.medico });
-  check("medico descarga el documento descifrado", r.status === 200 && Buffer.isBuffer(r.data) && r.data.equals(pdf), st(r));
+  r = await api("GET", `/pacientes/${P}/documentos/${D}`, { token: tk.enf });
+  check("Enfermeria descarga el documento (PDF) descifrado", r.status === 200 && Buffer.isBuffer(r.data) && r.data.equals(pdf), st(r));
   r = await api("GET", `/pacientes/${P}/documentos`, { token: tk.enf });
-  check("lista trae fechaDocumentoOriginal", r.status === 200 && !!r.data[0]?.fechaDocumentoOriginal, st(r));
+  check("lista trae fechaDocumentoOriginal", r.status === 200 && r.data.some((d) => d.fechaDocumentoOriginal), st(r));
   r = await api("DELETE", `/pacientes/${P}/documentos/${D}`, { token: tk.recep });
   check("eliminacion logica del documento", r.status === 200, st(r));
 
@@ -214,6 +215,38 @@ async function main() {
   check("listado paginado de facturas", r.status === 200, st(r));
   r = await api("GET", "/facturacion/reporte", { token: tk.recep });
   check("Recepcion NO ve el reporte financiero (403)", r.status === 403, st(r));
+
+  console.log("\n== GASTOS DEL HOSPITAL (23/09/2026) ==");
+  r = await api("POST", "/facturacion/categorias-fiscales", { token: tk.fact, body: { nombre: `SMOKE Categoria ${SUF}`, tasa: 12 } });
+  check("Facturacion NO puede crear categorias fiscales (403, solo Admin)", r.status === 403, st(r));
+  r = await api("POST", "/facturacion/categorias-fiscales", { token: admin, body: { nombre: `SMOKE Categoria ${SUF}`, tasa: 12 } });
+  check("Admin crea una categoria fiscal", r.status === 201, st(r));
+  const CAT = r.data?.id;
+  r = await api("POST", "/facturacion/categorias-fiscales", { token: admin, body: { nombre: `SMOKE Categoria ${SUF}`, tasa: 5 } });
+  check("nombre de categoria repetido -> 409", r.status === 409, st(r));
+  r = await api("GET", "/facturacion/reporte", { token: tk.fact });
+  const netoAntes = r.data.ingresoNeto;
+  r = await api("POST", "/facturacion/gastos", { token: tk.fact, body: { fecha: "2026-09-20", proveedor: "SMOKE Proveedor", monto: 150.5, categoriaFiscalId: CAT, numeroFactura: "DTE-001" } });
+  check("Facturacion registra un gasto clasificado", r.status === 201 && r.data.categoriaFiscal?.id === CAT, st(r));
+  check("el impuesto estimado se calcula solo (12% de 150.50)", Math.abs(Number(r.data.montoImpuestoEstimado) - 18.06) < 0.01, `impuesto=${r.data?.montoImpuestoEstimado}`);
+  const G = r.data?.id;
+  r = await api("POST", "/facturacion/gastos", { token: tk.fact, body: { fecha: "2026-09-20", proveedor: "SMOKE Sin categoria", monto: -5 } });
+  check("monto negativo -> 422", r.status === 422, st(r));
+  r = await api("GET", "/facturacion/gastos?page=1", { token: tk.fact });
+  check("listado paginado de gastos", r.status === 200 && r.data.items.some((g) => g.id === G), st(r));
+  r = await api("GET", "/facturacion/reporte", { token: tk.fact });
+  check("el reporte descuenta el gasto del ingreso neto", r.status === 200 && Math.abs(r.data.ingresoNeto - (netoAntes - 150.5)) < 0.01, `${st(r)} neto=${r.data?.ingresoNeto} antes=${netoAntes}`);
+  check("el reporte desglosa gastos por categoria fiscal", r.data.gastosPorCategoria?.some((c) => c.categoria === `SMOKE Categoria ${SUF}`), JSON.stringify(r.data.gastosPorCategoria));
+  check("el desglose incluye el impuesto estimado de la categoria", Math.abs((r.data.gastosPorCategoria?.find((c) => c.categoria === `SMOKE Categoria ${SUF}`)?.impuestoEstimado ?? 0) - 18.06) < 0.01, JSON.stringify(r.data.gastosPorCategoria));
+  check("el reporte totaliza el impuesto estimado", r.data.totalImpuestosEstimados >= 18.06, `total=${r.data?.totalImpuestosEstimados}`);
+  r = await api("DELETE", `/facturacion/gastos/${G}`, { token: tk.recep });
+  check("Recepcion NO puede eliminar gastos (403)", r.status === 403, st(r));
+  r = await api("DELETE", `/facturacion/gastos/${G}`, { token: tk.fact });
+  check("Facturacion elimina el gasto (correccion de captura)", r.status === 200, st(r));
+  r = await api("PUT", `/facturacion/categorias-fiscales/${CAT}`, { token: admin, body: { activo: false } });
+  check("Admin desactiva la categoria fiscal", r.status === 200 && r.data.activo === false, st(r));
+  r = await api("GET", "/facturacion/categorias-fiscales?activo=true", { token: tk.fact });
+  check("la categoria desactivada ya no aparece en el desplegable", r.status === 200 && !r.data.some((c) => c.id === CAT), st(r));
 
   console.log("\n== FARMACIA ==");
   r = await api("POST", "/farmacia", { token: tk.farm, body: { nombre: `SMOKE Med ${SUF}`, tipo: "Analgesico", presentacion: "Tableta", stock: 10, stockMinimo: 2, precioVenta: 5 } });
@@ -266,12 +299,14 @@ async function limpiar() {
   await intentar(() => prisma.ventaFarmacia.deleteMany({ where: { medicamentoId: { in: meds } } }));
   await intentar(() => prisma.facturaFarmacia.deleteMany({ where: { registradoPor: { in: uids } } }));
   await intentar(() => prisma.movimientoInventario.deleteMany({ where: { medicamentoId: { in: meds } } }));
-  for (const m of ["accesoDiagnostico", "diagnosticoArchivo", "diagnostico", "anexoPaciente", "documentoPaciente", "registroMaternidad", "egresoClinico", "tratamientoItem", "receta", "bitacoraVisita", "facturaHospital", "movimientoInventario"]) {
+  for (const m of ["accesoDiagnostico", "diagnosticoArchivo", "diagnostico", "documentoPaciente", "registroMaternidad", "egresoClinico", "tratamientoItem", "receta", "bitacoraVisita", "facturaHospital", "movimientoInventario"]) {
     await intentar(() => prisma[m].deleteMany({ where: { pacienteId: { in: pids } } }));
   }
   await intentar(() => prisma.medicamentoInventario.deleteMany({ where: { id: { in: meds } } }));
   await intentar(() => prisma.paciente.deleteMany({ where: { id: { in: pids } } }));
   await intentar(() => prisma.medicoReferente.deleteMany({ where: { nombre: { startsWith: "SMOKE" } } }));
+  await intentar(() => prisma.gastoHospital.deleteMany({ where: { proveedor: { startsWith: "SMOKE" } } }));
+  await intentar(() => prisma.categoriaFiscal.deleteMany({ where: { nombre: { startsWith: "SMOKE" } } }));
   await intentar(() => prisma.tokenTemporal.deleteMany({ where: { OR: [{ usuarioId: { in: uids } }, { emitidoPor: { in: uids } }] } }));
   await intentar(() => prisma.logActividad.deleteMany({ where: { usuarioId: { in: uids } } }));
   await intentar(() => prisma.passwordResetToken.deleteMany({ where: { usuarioId: { in: uids } } }));
