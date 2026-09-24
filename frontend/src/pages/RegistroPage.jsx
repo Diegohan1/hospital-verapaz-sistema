@@ -220,6 +220,26 @@ export function RegistroPage({ onVerExpediente }) {
     }
   }
 
+  // Cambios2: el escaner entrega el PDF generado; se sube al expediente del
+  // paciente seleccionado en "Ingreso / Egreso" con sus metadatos.
+  async function confirmarDocumento(blob, { paginas, nombre }) {
+    if (!ingresoPacienteId) {
+      setMensajeFichaDocumento({ tone: "error", texto: "No hay paciente seleccionado para asociar el documento." });
+      return;
+    }
+    const fd = new FormData();
+    fd.append("documento", new File([blob], nombre, { type: "application/pdf" }));
+    fd.append("nombreOriginal", nombre);
+    fd.append("paginas", String(paginas));
+    try {
+      await api.post(`/pacientes/${ingresoPacienteId}/documentos`, fd);
+      reloadDocumentos();
+      setMensajeFichaDocumento({ tone: "success", texto: `Documento guardado en el expediente (${paginas} página${paginas === 1 ? "" : "s"}).` });
+    } catch (err) {
+      setMensajeFichaDocumento({ tone: "error", texto: err.message });
+    }
+  }
+
   const [form, setForm] = useState(CAMPOS_VACIOS);
   const [lugarOtro, setLugarOtro] = useState(false);
   const [parentescoOtro, setParentescoOtro] = useState(false);
@@ -539,59 +559,7 @@ export function RegistroPage({ onVerExpediente }) {
       {/* Cambios2: escaneo documental del paciente dentro de "Paciente nuevo".
           Se toma la foto o se sube el archivo y el sistema detecta bordes,
           corrige perspectiva y aplica el filtro automaticamente. */}
-      {tab === "nuevo" && puedeRegistrar && puedeVerDocumentos && (
-        <Card style={{ marginTop: 16 }}>
-          <div className="font-semibold text-sm mb-1">Escanear documento del paciente</div>
-          <p className="text-xs mb-4" style={{ color: "#888" }}>
-            Tome la foto o suba la imagen del documento (DPI, certificado de nacimiento, referencia, constancia…):
-            el sistema detecta los bordes, corrige la perspectiva y genera el PDF en automático,
-            como un escáner de impresión. El documento queda asociado al expediente del paciente.
-          </p>
-
-          {mensajeDocumento && <Banner tone={mensajeDocumento.tone}>{mensajeDocumento.texto}</Banner>}
-
-          <div className="flex items-end gap-3 flex-wrap mt-2">
-            <FormField label="Paciente">
-              <PacienteBuscador pacienteSeleccionado={pacienteEscanear} onSelect={setPacienteEscanear} mostrarListado />
-            </FormField>
-            <Button onClick={() => setEscanerAbierto(true)} disabled={!pacienteEscanear}>
-              <span className="flex items-center gap-1.5"><Camera size={15} /> Escanear documento</span>
-            </Button>
-          </div>
-          {!pacienteEscanear && (
-            <p className="text-xs mt-2" style={{ color: COLORS.gold }}>
-              Seleccione un paciente (queda preseleccionado al registrar uno nuevo) o regístrelo primero.
-            </p>
-          )}
-
-          {pacienteEscanear && (documentosEscanear || []).length > 0 && (
-            <div className="mt-4 flex flex-col gap-2">
-              <div className="text-xs font-semibold" style={{ color: "#888" }}>
-                Documentos en el expediente de {pacienteEscanear.nombreCompleto}
-              </div>
-              {(documentosEscanear || []).map((d) => (
-                <div key={d.id} className="flex items-center gap-3 justify-between flex-wrap text-sm">
-                  <span className="flex items-center gap-2 min-w-0">
-                    <FileText size={15} style={{ color: COLORS.navy }} className="shrink-0" />
-                    <span className="font-semibold truncate">{d.nombreOriginal}</span>
-                    <span className="text-xs" style={{ color: "#999" }}>
-                      {d.paginas} pág. · {new Date(d.creadoEn).toLocaleDateString()}
-                    </span>
-                  </span>
-                  <span className="flex gap-1">
-                    <button onClick={() => descargarDocumento(pacienteEscanear.id, d)} className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-lg" style={{ color: COLORS.navy }} aria-label={`Abrir ${d.nombreOriginal}`}>
-                      <Download size={13} /> Abrir
-                    </button>
-                    <button onClick={() => eliminarDocumento(pacienteEscanear.id, d, reloadDocumentosEscanear)} className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-lg" style={{ color: COLORS.red }} aria-label={`Eliminar ${d.nombreOriginal}`}>
-                      <Trash2 size={13} /> Eliminar
-                    </button>
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </Card>
-      )}
+      
 
       {tab === "ingreso" && puedeRegistrar ? (
         <Card>
@@ -777,7 +745,7 @@ export function RegistroPage({ onVerExpediente }) {
       <CameraScannerModal
         open={escanerAbierto}
         onClose={() => setEscanerAbierto(false)}
-        pacienteId={pacienteEscanear?.id}
+        pacienteId={ingresoPacienteId}
         onConfirmar={confirmarDocumento}
       />
     </div>
