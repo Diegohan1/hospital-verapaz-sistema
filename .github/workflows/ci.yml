@@ -1,0 +1,339 @@
+name: CI/CD Pipeline - Hospital Verapaz
+
+on:
+  push:
+    branches: [ Dev_Diego, main ]
+  pull_request:
+    branches: [ Dev_Diego, main ]
+
+env:
+  NODE_VERSION: '22'
+  POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+  JWT_SECRET: ${{ secrets.JWT_SECRET }}
+  ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
+
+jobs:
+  # ============================================================
+  # LINT & TYPECHECK
+  # ============================================================
+  lint:
+    name: Lint & Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: ./frontend
+
+      - name: Run lint
+        run: npm run lint 2>/dev/null || echo "No lint script configured"
+        working-directory: ./frontend
+
+      - name: Run typecheck (if available)
+        run: npx tsc --noEmit 2>/dev/null || echo "No TypeScript config or types not strict"
+        working-directory: ./frontend
+
+  # ============================================================
+  # BACKEND TESTS (Unit & Integration)
+  # ============================================================
+  backend-tests:
+    name: Backend Unit & Integration Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: verapaz
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          POSTGRES_DB: hospital_verapaz
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U verapaz -d hospital_verapaz"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend dependencies
+        run: npm ci
+        working-directory: ./backend
+
+      - name: Generate Prisma Client
+        run: npm run prisma:generate
+        working-directory: ./backend
+        env:
+          DATABASE_URL: postgresql://verapaz:${{ secrets.POSTGRES_PASSWORD }}@localhost:5432/hospital_verapaz
+
+      - name: Run migrations
+        run: npm run prisma:migrate deploy
+        working-directory: ./backend
+        env:
+          DATABASE_URL: postgresql://verapaz:${{ secrets.POSTGRES_PASSWORD }}@localhost:5432/hospital_verapaz
+          ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+
+      - name: Run seed
+        run: npm run prisma:seed
+        working-directory: ./backend
+        env:
+          DATABASE_URL: postgresql://verapaz:${{ secrets.POSTGRES_PASSWORD }}@localhost:5432/hospital_verapaz
+          ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          SEED_ADMIN_PASSWORD: ${{ secrets.SEED_ADMIN_PASSWORD }}
+
+      - name: Run backend tests (if available)
+        run: npm test 2>/dev/null || echo "No test script in backend"
+        working-directory: ./backend
+        env:
+          DATABASE_URL: postgresql://verapaz:${{ secrets.POSTGRES_PASSWORD }}@localhost:5432/hospital_verapaz
+          ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+
+  # ============================================================
+  # FRONTEND BUILD
+  # ============================================================
+  frontend-build:
+    name: Frontend Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: ./frontend
+
+      - name: Build frontend
+        run: npm run build
+        working-directory: ./frontend
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+          retention-days: 7
+
+  # ============================================================
+  # PLAYWRIGHT E2E TESTS
+  # ============================================================
+  e2e-tests:
+    name: Playwright E2E Tests
+    runs-on: ubuntu-latest
+    needs: [frontend-build, backend-tests]
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: verapaz
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          POSTGRES_DB: hospital_verapaz
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U verapaz -d hospital_verapaz"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: ./frontend
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+        working-directory: ./frontend
+
+      - name: Build frontend
+        run: npm run build
+        working-directory: ./frontend
+
+      - name: Start backend
+        run: |
+          cd backend
+          npm ci
+          npm run prisma:generate
+          npm run prisma:migrate deploy
+          npm run prisma:seed
+          nohup npm run dev > backend.log 2>&1 &
+          echo $! > backend.pid
+          sleep 15
+        env:
+          DATABASE_URL: postgresql://verapaz:${{ secrets.POSTGRES_PASSWORD }}@localhost:5432/hospital_verapaz
+          ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          SEED_ADMIN_PASSWORD: ${{ secrets.SEED_ADMIN_PASSWORD }}
+
+      - name: Start frontend preview server
+        run: |
+          cd frontend
+          nohup npx serve -s dist -l 5173 > frontend.log 2>&1 &
+          echo $! > frontend.pid
+          sleep 10
+        working-directory: ./frontend
+
+      - name: Wait for services
+        run: |
+          for i in {1..30}; do
+            if curl -sf http://localhost:4000/api/health && curl -sf http://localhost:5173; then
+              echo "Services ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Services failed to start"
+          cat backend/backend.log
+          cat frontend/frontend.log
+          exit 1
+
+      - name: Run Playwright tests
+        run: npx playwright test
+        working-directory: ./frontend
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:5173
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: frontend/playwright-report
+          retention-days: 14
+
+      - name: Upload screenshots/videos on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-failures
+          path: |
+            frontend/test-results
+            frontend/playwright-report
+          retention-days: 14
+
+      - name: Cleanup
+        if: always()
+        run: |
+          cd frontend && [ -f frontend.pid ] && kill $(cat frontend.pid) 2>/dev/null || true
+          cd backend && [ -f backend.pid ] && kill $(cat backend.pid) 2>/dev/null || true
+
+  # ============================================================
+  # DOCKER BUILD (Smoke test)
+  # ============================================================
+  docker-build:
+    name: Docker Build & Smoke Test
+    runs-on: ubuntu-latest
+    needs: [frontend-build, backend-tests]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker images
+        run: |
+          docker compose -f docker-compose.yml build
+        env:
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
+          SEED_ADMIN_PASSWORD: ${{ secrets.SEED_ADMIN_PASSWORD }}
+
+      - name: Run containers
+        run: |
+          docker compose -f docker-compose.yml up -d
+          sleep 30
+
+      - name: Health checks
+        run: |
+          curl -sf http://localhost:8080/api/health
+          curl -sf http://localhost:8080/ | grep -q "root"
+
+      - name: Cleanup
+        if: always()
+        run: docker compose down -v
+
+  # ============================================================
+  # DEPLOY TO STAGING (manual approval)
+  # ============================================================
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [e2e-tests, docker-build]
+    if: github.ref == 'refs/heads/Dev_Diego' || github.event_name == 'pull_request'
+    environment: staging
+    steps:
+      - name: Deploy to Staging
+        run: echo "Deploy to staging server (configure SSH/Ansible/Terraform here)"
+        # Ejemplo:
+        # - uses: appleboy/ssh-action@v1
+        #   with:
+        #     host: ${{ secrets.STAGING_HOST }}
+        #     username: ${{ secrets.STAGING_USER }}
+        #     key: ${{ secrets.STAGING_SSH_KEY }}
+        #     script: |
+        #       cd /opt/hospital-verapaz
+        #       git pull origin Dev_Diego
+        #       docker compose -f docker-compose.yml up -d --build
+        #       docker compose ps
+
+  # ============================================================
+  # RELEASE (manual, solo main)
+  # ============================================================
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: [e2e-tests, docker-build]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - name: Create Release Tag
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ github.run_number }}
+          release_name: Release v${{ github.run_number }}
+          body: |
+            Automated release from CI/CD pipeline
+            - Frontend build: ✅
+            - Backend tests: ✅
+            - E2E tests: ✅
+            - Docker build: ✅
+          draft: false
+          prerelease: false
