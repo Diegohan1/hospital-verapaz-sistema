@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Printer, Camera, FileText, Download, Trash2 } from "lucide-react";
+import { Printer, Clipboard } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
 import { Card } from "../components/Card";
 import { Table } from "../components/Table";
@@ -89,11 +89,7 @@ export function RegistroPage({ onVerExpediente }) {
   const [ingresoPacienteId, setIngresoPacienteId] = useState(null);
   const [mostrarFicha, setMostrarFicha] = useState(false);
   const [escanerAbierto, setEscanerAbierto] = useState(false);
-  const [mensajeDocumento, setMensajeDocumento] = useState(null);
   const [mensajeFichaDocumento, setMensajeFichaDocumento] = useState(null);
-  // Paciente al que se le escanearan documentos (seccion "Paciente nuevo"):
-  // por defecto, el ultimo paciente registrado en esta sesion.
-  const [pacienteEscanear, setPacienteEscanear] = useState(null);
   const { data: pacienteDetalle, reload: reloadPacienteDetalle } = useFetch(
     ingresoPacienteId ? `/pacientes/${ingresoPacienteId}` : null,
     { enabled: !!ingresoPacienteId }
@@ -104,10 +100,6 @@ export function RegistroPage({ onVerExpediente }) {
   const { data: documentosPaciente, reload: reloadDocumentos } = useFetch(
     puedeVerDocumentos && ingresoPacienteId ? `/pacientes/${ingresoPacienteId}/documentos` : null,
     { enabled: !!(puedeVerDocumentos && ingresoPacienteId) }
-  );
-  const { data: documentosEscanear, reload: reloadDocumentosEscanear } = useFetch(
-    puedeVerDocumentos && pacienteEscanear?.id ? `/pacientes/${pacienteEscanear.id}/documentos` : null,
-    { enabled: !!(puedeVerDocumentos && pacienteEscanear?.id) }
   );
   const [ingresoForm, setIngresoForm] = useState(CAMPOS_INGRESO_VACIOS);
   const [guardandoIngreso, setGuardandoIngreso] = useState(false);
@@ -201,18 +193,6 @@ export function RegistroPage({ onVerExpediente }) {
     }
   }
 
-  // Cambios2: el escaner entrega el PDF generado; se sube al expediente del
-  // paciente seleccionado en "Paciente nuevo" con sus metadatos.
-  async function confirmarDocumento(blob, { paginas, nombre }) {
-    const fd = new FormData();
-    fd.append("documento", new File([blob], nombre, { type: "application/pdf" }));
-    fd.append("nombreOriginal", nombre);
-    fd.append("paginas", String(paginas));
-    await api.post(`/pacientes/${pacienteEscanear.id}/documentos`, fd);
-    reloadDocumentosEscanear();
-    setMensajeDocumento({ tone: "success", texto: `Documento guardado en el expediente de ${pacienteEscanear.nombreCompleto} (${paginas} página${paginas === 1 ? "" : "s"}).` });
-  }
-
   async function descargarDocumento(pacienteId, doc, alError) {
     try {
       const blob = await api.getBlob(`/pacientes/${pacienteId}/documentos/${doc.id}`);
@@ -225,7 +205,7 @@ export function RegistroPage({ onVerExpediente }) {
       a.remove();
       URL.revokeObjectURL(url);
     } catch (err) {
-      (alError || setMensajeDocumento)({ tone: "error", texto: err.message });
+      alError({ tone: "error", texto: err.message });
     }
   }
 
@@ -234,9 +214,9 @@ export function RegistroPage({ onVerExpediente }) {
     try {
       await api.del(`/pacientes/${pacienteId}/documentos/${doc.id}`);
       reload();
-      (alError || setMensajeDocumento)({ tone: "success", texto: "Documento eliminado del expediente." });
+      alError({ tone: "success", texto: "Documento eliminado del expediente." });
     } catch (err) {
-      (alError || setMensajeDocumento)({ tone: "error", texto: err.message });
+      alError({ tone: "error", texto: err.message });
     }
   }
 
@@ -272,10 +252,6 @@ export function RegistroPage({ onVerExpediente }) {
         medicoReferenteId: form.medicoReferenteId ? Number(form.medicoReferenteId) : undefined,
       });
       setMensaje({ tone: "success", texto: `Paciente registrado con historia clínica ${paciente.historiaClinica}` });
-      // Cambios2: deja seleccionado al paciente recien creado para poder
-      // escanearle el DPI/documentos de inmediato en esta misma pestaña.
-      setPacienteEscanear(paciente);
-      setMensajeDocumento({ tone: "info", texto: `Puede escanear los documentos de ${paciente.nombreCompleto} aquí mismo.` });
       setForm(CAMPOS_VACIOS);
       setLugarOtro(false);
       setParentescoOtro(false);
@@ -320,6 +296,24 @@ export function RegistroPage({ onVerExpediente }) {
           Pacientes registrados
         </button>
       </div>
+
+      {/* Cambios2/revision: escaneo documental independiente de pacientes
+          existentes. Boton hasta arriba de la pestana "Paciente nuevo" con
+          icono de portapapeles; preparado para el OCR futuro que autoguardara
+          un nuevo paciente a partir del documento escaneado. */}
+      {tab === "nuevo" && puedeRegistrar && (
+        <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
+          <p className="text-xs" style={{ color: "#888" }}>
+            Escanee el documento antes o después de registrar: la captura se procesa automáticamente (bordes y perspectiva) y se descarga como PDF.
+          </p>
+          <Button onClick={() => setEscanerAbierto(true)}>
+            <span className="flex items-center gap-1.5">
+              <Clipboard size={15} aria-hidden />
+              <span aria-label="Escanear documento">Escanear documento</span>
+            </span>
+          </Button>
+        </div>
+      )}
 
       {tab === "nuevo" && puedeRegistrar ? (
         <Card>
