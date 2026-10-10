@@ -160,21 +160,24 @@ function DiagnosticoDetalle({ d }) {
           )}
           {d.datos?.diagnosticoPrincipal?.diagnostico && (
             <div className="rounded-xl p-3" style={{ backgroundColor: "#FAFAFB", border: `1px solid ${COLORS.border}` }}>
-              <div className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: "#888" }}>Diagnóstico principal</div>
+              <div className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: "#888" }}>Diagnóstico 1 · Principal</div>
               <div className="text-sm font-semibold">{d.datos.diagnosticoPrincipal.diagnostico}</div>
               <div className="text-xs mt-1" style={{ color: "#666" }}>
-                Código CIE-10: {d.datos.diagnosticoPrincipal.codigoCie || "—"} · {d.datos.diagnosticoPrincipal.tipo} · {d.datos.diagnosticoPrincipal.estado}
+                Código CIE-10: {d.datos.diagnosticoPrincipal.codigoCie || "—"} · Prioridad: {d.datos.diagnosticoPrincipal.prioridad || "Principal"} · {d.datos.diagnosticoPrincipal.tipo} · {d.datos.diagnosticoPrincipal.estado}
               </div>
             </div>
           )}
           {d.datos?.diagnosticosSecundarios?.length > 0 && (
             <div>
-              <div className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: "#888" }}>Diagnósticos secundarios</div>
-              <div className="flex flex-col gap-1 text-sm">
+              <div className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: "#888" }}>Diagnósticos adicionales · en orden de importancia</div>
+              <ol className="list-decimal pl-5 flex flex-col gap-1 text-sm">
                 {d.datos.diagnosticosSecundarios.map((s, i) => (
-                  <div key={i}>{s.diagnostico} {s.codigoCie && <span style={{ color: "#888" }}>({s.codigoCie})</span>} — {s.estado}</div>
+                  <li key={i}>
+                    <span className="font-medium">{s.diagnostico}</span>
+                    <span className="ml-2 text-xs" style={{ color: "#666" }}>Código CIE-10: {s.codigoCie || "—"} · Prioridad: {s.prioridad || "Secundario"} · {s.estado}</span>
+                  </li>
                 ))}
-              </div>
+              </ol>
             </div>
           )}
           {d.datos?.impresionClinica && (
