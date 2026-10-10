@@ -4,7 +4,8 @@ import { FichaHeader } from "./FichaHeader";
 import { FichaSeccion } from "./FichaSeccion";
 import { FichaCampo } from "./FichaCampo";
 import { COLORS } from "../styles/tokens";
-import { etiquetaCondicionEgreso } from "../utils/condicionesEgreso";
+import { CONDICIONES_EGRESO_BEBE, etiquetaCondicionEgreso } from "../utils/condicionesEgreso";
+import { etiquetaEstadoCivil } from "../utils/guatemala";
 import { fechaDia, fechaHoraLocal } from "../utils/fechas";
 
 function tamanoLegible(bytes) {
@@ -35,12 +36,17 @@ export function FichaPacienteImprimible({
   const diagnosticoEgreso = eg.diagnosticoEgreso ?? p.diagnosticoEgresoCodigo;
   const complicaciones = eg.complicaciones ?? p.complicacionesCodigo;
   const operaciones = eg.operaciones ?? p.operacionesCodigo;
+  const diagnosticosEgreso = eg.diagnosticosEgreso?.length ? eg.diagnosticosEgreso : diagnosticoEgreso ? [{ descripcion: "", codigo: diagnosticoEgreso }] : [];
+  const complicacionesEgreso = eg.complicacionesEgreso?.length ? eg.complicacionesEgreso : complicaciones ? [{ descripcion: "", codigo: complicaciones }] : [];
+  const operacionesLista = eg.operacionesLista?.length ? eg.operacionesLista : operaciones ? String(operaciones).split("\n").filter(Boolean) : [];
   const autopsia = eg.autopsia ?? p.autopsia;
   const causaMuerte = eg.causaMuerte ?? p.causaMuerte;
+  const maternidad = p.maternidad;
+  const condicionBebe = CONDICIONES_EGRESO_BEBE.find((c) => c.value === maternidad?.condicionEgresoBebe)?.label || maternidad?.condicionEgresoBebe;
 
-  const tieneEgreso = p.fechaEgreso || p.condicionEgreso || diagnosticoEgreso || complicaciones || operaciones || causaMuerte;
-  const tieneMaternidad = p.maternidad && (p.maternidad.numeroHijo || p.maternidad.fecha || p.maternidad.sexo || p.maternidad.condicionEgresoBebe || p.maternidad.bebeNombre || p.maternidad.padreNombre);
-  const tieneEmergencia = p.contactoEmergencia || p.telefonoEmergencia || p.parentesco;
+  const tieneEgreso = p.fechaEgreso || p.condicionEgreso || diagnosticosEgreso.length || complicacionesEgreso.length || operacionesLista.length || diagnosticoEgreso || complicaciones || operaciones || causaMuerte;
+  const tieneMaternidad = maternidad && (maternidad.numeroHijo || maternidad.fecha || maternidad.sexo || maternidad.condicionEgresoBebe || maternidad.autopsiaBebe != null || maternidad.causaMuerteBebe || maternidad.fechaMuerteBebe);
+  const tieneEmergencia = p.contactoEmergencia || p.direccionEmergencia || p.telefonoEmergencia || p.parentesco;
   const tieneEncargado = p.encargadoNombre || p.encargadoTelefono;
   // Fecha escrita en el papel (la mas antigua si hubiera varios documentos)
   const fechaPapel = (documentos || []).map((d) => d.fechaDocumentoOriginal).filter(Boolean).sort()[0] || null;
@@ -77,7 +83,7 @@ export function FichaPacienteImprimible({
       <FichaSeccion titulo="Datos de contacto">
         <div className="grid grid-cols-3 gap-3">
           <FichaCampo label="Teléfono" valor={p.telefono} />
-          <FichaCampo label="Estado civil" valor={p.estadoCivil} />
+          <FichaCampo label="Estado civil" valor={etiquetaEstadoCivil(p.estadoCivil)} />
           <FichaCampo label="Ocupación" valor={p.ocupacion} />
           <FichaCampo label="Lugar de nacimiento" valor={p.lugarNacimiento} />
           <FichaCampo label="Religión" valor={p.religion} />
@@ -89,6 +95,8 @@ export function FichaPacienteImprimible({
       <FichaSeccion titulo="Información familiar">
         <div className="grid grid-cols-3 gap-3">
           <FichaCampo label="Nombre del cónyuge" valor={p.nombreConyuge} />
+          <FichaCampo label="Dirección del cónyuge" valor={p.direccionConyuge} />
+          <FichaCampo label="Teléfono del cónyuge" valor={p.telefonoConyuge} />
           <FichaCampo label="Nombre del padre" valor={p.nombrePadre} />
           <FichaCampo label="Nombre de la madre" valor={p.nombreMadre} />
         </div>
@@ -99,6 +107,7 @@ export function FichaPacienteImprimible({
         <FichaSeccion titulo="En caso de emergencia notificar">
           <div className="grid grid-cols-3 gap-3">
             <FichaCampo label="Nombre del contacto" valor={p.contactoEmergencia} />
+            <FichaCampo label="Dirección" valor={p.direccionEmergencia} />
             <FichaCampo label="Teléfono" valor={p.telefonoEmergencia} />
             <FichaCampo label="Parentesco" valor={p.parentesco} />
           </div>
@@ -121,6 +130,8 @@ export function FichaPacienteImprimible({
           <FichaCampo label="Fecha y hora de ingreso" valor={p.fechaIngreso} formato="fechaHora" />
           <FichaCampo label="Servicios solicitados" valor={p.serviciosSolicitados} />
           <FichaCampo label="Referido de" valor={p.referidoDe} />
+          <FichaCampo label="Referido por" valor={p.referidoPor} />
+          <FichaCampo label="Otras hospitalizaciones" valor={p.otrasHospitalizaciones} colSpan={3} />
           <FichaCampo label="Impresión clínica de ingreso" valor={p.impresionClinicaIngreso} colSpan={3} />
         </div>
       </FichaSeccion>
@@ -131,9 +142,23 @@ export function FichaPacienteImprimible({
           <div className="grid grid-cols-2 gap-3">
             <FichaCampo label="Fecha y hora de egreso" valor={p.fechaEgreso} formato="fechaHora" />
             <FichaCampo label="Condición de egreso" valor={p.condicionEgreso ? etiquetaCondicionEgreso(p.condicionEgreso) : null} />
-            <FichaCampo label="Diagnóstico de egreso (CIE-10)" valor={diagnosticoEgreso} />
-            <FichaCampo label="Complicaciones (CIE-10)" valor={complicaciones} />
-            <FichaCampo label="Operaciones" valor={operaciones} />
+            {diagnosticosEgreso.length > 0 && (
+              <div className="col-span-2">
+                <div className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: "#888" }}>Diagnósticos de egreso (en orden de importancia)</div>
+                <ol className="list-decimal pl-5 text-sm">
+                  {diagnosticosEgreso.map((d, i) => <li key={i}>{d.descripcion || "Diagnóstico"}{d.codigo && <> · Código: {d.codigo}</>}</li>)}
+                </ol>
+              </div>
+            )}
+            {complicacionesEgreso.length > 0 && (
+              <div className="col-span-2">
+                <div className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: "#888" }}>Complicaciones</div>
+                <ul className="list-disc pl-5 text-sm">
+                  {complicacionesEgreso.map((c, i) => <li key={i}>{c.descripcion || "Complicación"}{c.codigo && <> · Código: {c.codigo}</>}</li>)}
+                </ul>
+              </div>
+            )}
+            {operacionesLista.length > 0 && <FichaCampo label="Operaciones (en orden de importancia)" valor={operacionesLista.map((op, i) => `${i + 1}. ${op}`).join(" · ")} colSpan={2} />}
             <FichaCampo label="Autopsia" valor={autopsia == null ? null : autopsia ? "Sí" : "No"} />
             {causaMuerte && <FichaCampo label="Causa de la muerte" valor={causaMuerte} colSpan={2} />}
           </div>
@@ -144,11 +169,14 @@ export function FichaPacienteImprimible({
       {tieneMaternidad && (
         <FichaSeccion titulo="Maternidad">
           <div className="grid grid-cols-4 gap-3">
-            <FichaCampo label="No. de hijo" valor={p.maternidad.numeroHijo} />
-            <FichaCampo label="Fecha de nacimiento" valor={p.maternidad.fecha} formato="fecha" />
-            <FichaCampo label="Hora" valor={p.maternidad.hora} />
-            <FichaCampo label="Sexo" valor={p.maternidad.sexo} />
-            <FichaCampo label="Condición de egreso del bebé" valor={p.maternidad.condicionEgresoBebe} colSpan={4} />
+            <FichaCampo label="No. de hijo" valor={maternidad.numeroHijo} />
+            <FichaCampo label="Fecha de nacimiento" valor={maternidad.fecha} formato="fecha" />
+            <FichaCampo label="Hora" valor={maternidad.hora} />
+            <FichaCampo label="Sexo" valor={maternidad.sexo} />
+            <FichaCampo label="Condición de egreso del bebé" valor={condicionBebe} colSpan={4} />
+            <FichaCampo label="Autopsia del bebé" valor={maternidad.autopsiaBebe == null ? null : maternidad.autopsiaBebe ? "Sí" : "No"} />
+            <FichaCampo label="Causa de muerte del bebé" valor={maternidad.causaMuerteBebe} />
+            <FichaCampo label="Fecha de muerte del bebé" valor={maternidad.fechaMuerteBebe} formato="fecha" />
             <FichaCampo label="Nombre del bebé" valor={p.maternidad.bebeNombre} colSpan={2} />
             {/* La madre es la propia paciente: se toma de su ficha */}
             <FichaCampo label="Madre" valor={`${p.nombreCompleto}${p.dpi ? ` — DPI ${p.dpi}` : ""}`} colSpan={2} />

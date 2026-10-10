@@ -6,3 +6,5 @@ backend/backups/
 backend/uploads/
 frontend/.cert/*.pem
 frontend/.cert/*.cnf
+frontend/playwright-report/
+frontend/test-results/

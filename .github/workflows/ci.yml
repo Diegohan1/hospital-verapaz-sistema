@@ -223,10 +223,11 @@ jobs:
           exit 1
 
       - name: Run Playwright tests
-        run: npx playwright test
+        run: npm run test:e2e
         working-directory: ./frontend
         env:
           PLAYWRIGHT_BASE_URL: http://localhost:5173
+          SEED_ADMIN_PASSWORD: ${{ secrets.SEED_ADMIN_PASSWORD }}
 
       - name: Upload Playwright report
         if: always()

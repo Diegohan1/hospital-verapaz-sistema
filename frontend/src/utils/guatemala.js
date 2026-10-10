@@ -24,7 +24,17 @@ export const DEPARTAMENTOS_GUATEMALA = [
   { departamento: "Jutiapa", municipios: ["Jutiapa", "El Progreso", "Santa Catarina Mita", "Agua Blanca", "Asunción Mita", "Yupiltepeque", "Atescatempa", "Jerez", "El Adelanto", "Zapotitlán", "Comapa", "Jalpatagua", "Conguaco", "Moyuta", "Pasaco", "San José Acatempa", "Quesada"] },
 ];
 
-export const ESTADOS_CIVILES = ["Soltero/a", "Casado/a", "Unido/a de hecho", "Divorciado/a", "Viudo/a"];
+export const ESTADOS_CIVILES = [
+  { value: "S", label: "Soltero/a" },
+  { value: "C", label: "Casado/a" },
+  { value: "U", label: "Unido/a" },
+  { value: "D", label: "Divorciado/a" },
+  { value: "V", label: "Viudo/a" },
+];
+
+export function etiquetaEstadoCivil(value) {
+  return ESTADOS_CIVILES.find((estado) => estado.value === value)?.label || value || "—";
+}
 
 // Nacionalidades mas frecuentes para un hospital en Coban (Guatemala y
 // paises vecinos primero); "Otra" abre un campo de texto libre.

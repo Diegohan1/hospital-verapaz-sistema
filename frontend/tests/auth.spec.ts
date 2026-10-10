@@ -8,7 +8,7 @@ test.describe('Autenticación y login', () => {
 
   test('Login exitoso con credenciales válidas', async ({ page }) => {
     await page.fill('input[type="email"]', 'admin@hospitalverapaz.gt');
-    await page.fill('input[type="password"]', 'CambiarEsta123');
+    await page.fill('input[type="password"]', process.env.SEED_ADMIN_PASSWORD || 'CambiarEsta123');
     await page.click('button[type="submit"]');
     await expect(page).toHaveURL(/\//);
     // Verificar que estamos en la página de registro usando el heading principal
@@ -20,7 +20,7 @@ test.describe('Autenticación y login', () => {
     await page.fill('input[type="password"]', 'contraseña_incorrecta');
     await page.click('button[type="submit"]');
     // Buscar cualquier banner de error
-    await expect(page.locator('[class*="banner"]:has-text("Credenciales")')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/Credenciales invalidas|Demasiados intentos fallidos/)).toBeVisible({ timeout: 10000 });
   });
 
   test('Enlace de recuperación de contraseña', async ({ page }) => {

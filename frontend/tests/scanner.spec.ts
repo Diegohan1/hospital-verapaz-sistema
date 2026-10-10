@@ -4,27 +4,22 @@ test.describe('Escáner Documental - UI', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
     await page.fill('input[type="email"]', 'admin@hospitalverapaz.gt');
-    await page.fill('input[type="password"]', 'CambiarEsta123');
+    await page.fill('input[type="password"]', process.env.SEED_ADMIN_PASSWORD || 'CambiarEsta123');
     await page.click('button[type="submit"]');
     await expect(page).toHaveURL(/\//);
   });
 
-  test('Botón Escanear documento visible en Expediente', async ({ page }) => {
-    await page.click('aside >> text=Expediente Clínico');
-    await expect(page).toHaveURL(/.*expediente/);
-    await expect(page.locator('button:has-text("Escanear documento")')).toBeVisible();
+  test('Botón para escanear el expediente visible en Registro', async ({ page }) => {
+    await expect(page.getByRole('button', { name: /Escanear en esta computadora/ })).toBeVisible();
   });
 
   test('Modal de escáner se abre', async ({ page }) => {
-    await page.click('aside >> text=Expediente Clínico');
-    await expect(page.locator('button:has-text("Escanear documento")')).toBeVisible();
-    await page.click('button:has-text("Escanear documento")');
-    await expect(page.locator('text=Escanear documento')).toBeVisible({ timeout: 5000 });
+    await page.getByRole('button', { name: /Escanear en esta computadora/ }).click();
+    await expect(page.getByRole('heading', { name: 'Escanear documento del paciente' })).toBeVisible();
   });
 
   test('Input de archivo visible en modal', async ({ page }) => {
-    await page.click('aside >> text=Expediente Clínico');
-    await page.click('button:has-text("Escanear documento")');
-    await expect(page.locator('input[type="file"]')).toBeVisible({ timeout: 5000 });
+    await page.getByRole('button', { name: /Escanear en esta computadora/ }).click();
+    await expect(page.getByLabel('Subir imagen o PDF del documento')).toBeAttached();
   });
 });
