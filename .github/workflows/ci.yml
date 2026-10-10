@@ -285,6 +285,8 @@ jobs:
         run: |
           curl -sf http://localhost:8080/api/health
           curl -sf http://localhost:8080/ | grep -q "root"
+          WORKER=$(docker compose exec -T frontend sh -c 'basename /usr/share/nginx/html/assets/pdf.worker*.mjs')
+          curl -fsSI "http://localhost:8080/assets/$WORKER" | grep -Eiq '^Content-Type: application/javascript'
 
       - name: Cleanup
         if: always()
