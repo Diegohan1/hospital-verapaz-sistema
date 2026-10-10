@@ -9,7 +9,7 @@ const router = Router();
 
 // Sprint 2: limite de intentos por IP en los endpoints publicos de
 // autenticacion; responde 429 con Retry-After.
-const loginLimiter = createRateLimiter({ windowMs: 5 * 60 * 1000, max: 10, mensaje: "Demasiados intentos de inicio de sesión. Espere antes de volver a intentar" });
+const loginLimiter = createRateLimiter({ windowMs: 5 * 60 * 1000, max: 10, countFailuresOnly: true, mensaje: "Demasiados intentos fallidos de inicio de sesión. Espere antes de volver a intentar" });
 const resetLimiter = createRateLimiter({ windowMs: 5 * 60 * 1000, max: 5, mensaje: "Demasiadas solicitudes de recuperación. Espere antes de volver a intentar" });
 
 router.post("/login", loginLimiter, controller.login);

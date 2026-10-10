@@ -3,13 +3,19 @@ import assert from "node:assert/strict";
 import "./_entorno.mjs";
 import { createRateLimiter, _resetVentanas } from "../../src/middlewares/rate-limit.middleware.js";
 
-function llamar(limiter, ip = "1.2.3.4") {
-  const res = { cabeceras: {}, codigo: null, cuerpo: null,
+function llamar(limiter, ip = "1.2.3.4", statusCode = 200) {
+  const eventos = {};
+  const res = { cabeceras: {}, codigo: null, cuerpo: null, statusCode: null,
     setHeader(k, v) { this.cabeceras[k] = v; },
-    status(c) { this.codigo = c; return this; },
+    status(c) { this.codigo = c; this.statusCode = c; return this; },
+    once(evento, callback) { eventos[evento] = callback; },
     json(b) { this.cuerpo = b; return this; } };
   let siguio = false;
   limiter({ ip }, res, () => { siguio = true; });
+  if (siguio && eventos.finish) {
+    res.statusCode = statusCode;
+    eventos.finish();
+  }
   return { siguio, res };
 }
 
@@ -38,6 +44,17 @@ test("cada IP cuenta aparte", () => {
   assert.equal(llamar(lim, "10.0.0.1").siguio, true);
   assert.equal(llamar(lim, "10.0.0.1").res.codigo, 429);
   assert.equal(llamar(lim, "10.0.0.2").siguio, true);
+});
+
+test("el login puede contar solo fallos, sin bloquear accesos correctos", () => {
+  _resetVentanas();
+  const login = createRateLimiter({ windowMs: 60_000, max: 2, countFailuresOnly: true });
+  assert.equal(llamar(login).siguio, true);
+  assert.equal(llamar(login).siguio, true);
+  assert.equal(llamar(login, "1.2.3.4", 401).siguio, true);
+  assert.equal(llamar(login).siguio, true);
+  assert.equal(llamar(login, "1.2.3.4", 401).siguio, true);
+  assert.equal(llamar(login, "1.2.3.4", 401).res.codigo, 429);
 });
 
 test("la ventana se libera despues de windowMs", async () => {

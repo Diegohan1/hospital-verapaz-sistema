@@ -13,7 +13,7 @@ function ahora() {
 // (cada limitador tiene el suyo propio; esto solo los recorre a todos).
 const todasLasVentanas = [];
 
-export function createRateLimiter({ windowMs = 5 * 60 * 1000, max = 10, mensaje = "Demasiados intentos, espere un momento" } = {}) {
+export function createRateLimiter({ windowMs = 5 * 60 * 1000, max = 10, mensaje = "Demasiados intentos, espere un momento", countFailuresOnly = false } = {}) {
   // Un Map por limitador (no global): asi los intentos en /forgot-password
   // no consumen ni bloquean el cupo de /login, aunque vengan de la misma IP.
   const ventanas = new Map(); // clave -> { inicio, contador }
@@ -35,14 +35,27 @@ export function createRateLimiter({ windowMs = 5 * 60 * 1000, max = 10, mensaje 
     let estado = ventanas.get(clave);
 
     if (!estado || t - estado.inicio >= windowMs) {
-      estado = { inicio: t, contador: 0 };
+      estado = { inicio: t, contador: 0, pendientes: 0 };
       ventanas.set(clave, estado);
     }
-    estado.contador++;
 
     const reintentaEnSeg = Math.ceil((estado.inicio + windowMs - t) / 1000);
     res.setHeader("Retry-After", String(Math.max(1, reintentaEnSeg)));
 
+    if (countFailuresOnly) {
+      if (estado.contador + estado.pendientes >= max) {
+        return res.status(429).json({ error: mensaje, reintentaEnSeg });
+      }
+      estado.pendientes++;
+      res.once("finish", () => {
+        if (ventanas.get(clave) !== estado) return;
+        estado.pendientes--;
+        if (res.statusCode >= 400) estado.contador++;
+      });
+      return next();
+    }
+
+    estado.contador++;
     if (estado.contador > max) {
       return res.status(429).json({ error: mensaje, reintentaEnSeg });
     }
