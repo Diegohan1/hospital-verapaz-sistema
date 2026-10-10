@@ -24,31 +24,31 @@ model CatalogoCie10 {
 
 // Modulo 8: Seguridad y Roles
 model Usuario {
-  id                    Int      @id @default(autoincrement())
+  id                    Int       @id @default(autoincrement())
   nombre                String
-  correo                String   @unique
+  correo                String    @unique
   passwordHash          String
-  roles                 String[] @default([]) // uno o mas de: Administrador, Recepcion, Consulta, Enfermeria, Facturacion, Farmacia (RF-30)
-  puedeAutogenerarToken Boolean  @default(false) // RF-34
+  roles                 String[]  @default([]) // uno o mas de: Administrador, Recepcion, Consulta, Enfermeria, Facturacion, Farmacia (RF-30)
+  puedeAutogenerarToken Boolean   @default(false) // RF-34
   // Sprint 1: catalogo de medicos. Un usuario con rol clinico puede tener
   // numero de colegiado y especialidad, que se autocompletan al seleccionarlo
   // como medico responsable de una receta.
-  colegiado         String? // numero de colegiado activo
-  especialidad      String?
+  colegiado             String? // numero de colegiado activo
+  especialidad          String?
   ultimaActividad       DateTime? // se actualiza en cada peticion autenticada, para saber quien esta "en linea"
-  creadoEn              DateTime @default(now())
+  creadoEn              DateTime  @default(now())
 
-  tokensRecibidos  TokenTemporal[] @relation("TokenUsuario")
-  tokensEmitidos   TokenTemporal[] @relation("TokenEmisor")
-  diagnosticos     Diagnostico[]   @relation("DiagnosticoRegistradoPor")
-  recetas          Receta[]        @relation("RecetaMedico")
-  visitasRegistradas BitacoraVisita[] @relation("BitacoraAutor")
-  facturasFarmacia FacturaFarmacia[] @relation("FacturaFarmaciaRegistradoPor")
-  accesosDiagnostico AccesoDiagnostico[] @relation("AccesoDiagnosticoUsuario")
-  logs             LogActividad[]  @relation("LogActividadUsuario")
-  passwordResetTokens PasswordResetToken[]
-  documentosRegistrados DocumentoPaciente[] @relation("DocumentoRegistradoPor")
-  gastosRegistrados GastoHospital[] @relation("GastoRegistradoPor")
+  tokensRecibidos       TokenTemporal[]      @relation("TokenUsuario")
+  tokensEmitidos        TokenTemporal[]      @relation("TokenEmisor")
+  diagnosticos          Diagnostico[]        @relation("DiagnosticoRegistradoPor")
+  recetas               Receta[]             @relation("RecetaMedico")
+  visitasRegistradas    BitacoraVisita[]     @relation("BitacoraAutor")
+  facturasFarmacia      FacturaFarmacia[]    @relation("FacturaFarmaciaRegistradoPor")
+  accesosDiagnostico    AccesoDiagnostico[]  @relation("AccesoDiagnosticoUsuario")
+  logs                  LogActividad[]       @relation("LogActividadUsuario")
+  passwordResetTokens   PasswordResetToken[]
+  documentosRegistrados DocumentoPaciente[]  @relation("DocumentoRegistradoPor")
+  gastosRegistrados     GastoHospital[]      @relation("GastoRegistradoPor")
 }
 
 // Sprint 2: tokens de recuperacion de contrasena. Se guarda el hash SHA-256
@@ -56,12 +56,12 @@ model Usuario {
 // unico. La respuesta de "forgot-password" es anti-enumeracion: no revela
 // si el correo existe o no.
 model PasswordResetToken {
-  id        Int       @id @default(autoincrement())
+  id        Int      @id @default(autoincrement())
   usuarioId Int
-  tokenHash String    @unique
+  tokenHash String   @unique
   expiraEn  DateTime
-  usado     Boolean   @default(false)
-  creadoEn  DateTime  @default(now())
+  usado     Boolean  @default(false)
+  creadoEn  DateTime @default(now())
 
   usuario Usuario @relation(fields: [usuarioId], references: [id])
 
@@ -76,8 +76,8 @@ model PasswordResetToken {
 model LogActividad {
   id        Int      @id @default(autoincrement())
   usuarioId Int?
-  accion    String   // "login" | "logout" | "crear_paciente" | "generar_factura_hospital" | ...
-  detalle   String?  // contexto legible, ej. "Paciente HC-2026-000002"
+  accion    String // "login" | "logout" | "crear_paciente" | "generar_factura_hospital" | ...
+  detalle   String? // contexto legible, ej. "Paciente HC-2026-000002"
   fecha     DateTime @default(now())
 
   usuario Usuario? @relation("LogActividadUsuario", fields: [usuarioId], references: [id])
@@ -88,18 +88,18 @@ model LogActividad {
 }
 
 model TokenTemporal {
-  id          Int      @id @default(autoincrement())
-  token       String   @unique // valor aleatorio enviado en el header x-temp-token
-  usuarioId   Int
-  pacienteId  Int?
-  emitidoPor  Int      // id del Administrador que lo genero (o el mismo usuario si autogenerado)
-  expiraEn    DateTime
-  usado       Boolean  @default(false) // RNF-12: un solo uso
-  creadoEn    DateTime @default(now())
+  id         Int      @id @default(autoincrement())
+  token      String   @unique // valor aleatorio enviado en el header x-temp-token
+  usuarioId  Int
+  pacienteId Int?
+  emitidoPor Int // id del Administrador que lo genero (o el mismo usuario si autogenerado)
+  expiraEn   DateTime
+  usado      Boolean  @default(false) // RNF-12: un solo uso
+  creadoEn   DateTime @default(now())
 
-  usuario  Usuario   @relation("TokenUsuario", fields: [usuarioId], references: [id])
-  emisor   Usuario   @relation("TokenEmisor", fields: [emitidoPor], references: [id])
-  paciente Paciente? @relation(fields: [pacienteId], references: [id])
+  usuario  Usuario             @relation("TokenUsuario", fields: [usuarioId], references: [id])
+  emisor   Usuario             @relation("TokenEmisor", fields: [emitidoPor], references: [id])
+  paciente Paciente?           @relation(fields: [pacienteId], references: [id])
   accesos  AccesoDiagnostico[]
 
   @@index([usuarioId])
@@ -108,51 +108,56 @@ model TokenTemporal {
 
 // Modulo 1: Registro y Admision
 model Paciente {
-  id                 Int       @id @default(autoincrement())
-  historiaClinica    String    @unique // RF-03, generado automaticamente
-  nombreCompleto     String
-  dpi                String    @unique // RF-04, evita duplicados
-  direccion          String?
-  lugarNacimiento    String?
-  fechaNacimiento    DateTime?
-  telefono           String?
-  edad               Int?
-  sexo               String?
-  tipoSangre         String? // A+, A-, B+, B-, AB+, AB-, O+, O-
-  estadoCivil        String?
-  ocupacion          String?
-  religion           String?
-  nacionalidad       String?
-  nombreConyuge      String?
-  nombrePadre        String?
-  nombreMadre        String?
-  contactoEmergencia String? // nombre de la persona a contactar
-  telefonoEmergencia String? // telefono de esa misma persona
-  parentesco         String?
+  id                     Int       @id @default(autoincrement())
+  historiaClinica        String    @unique // RF-03, capturada como identificador numérico en admisión
+  nombreCompleto         String
+  dpi                    String    @unique // RF-04, evita duplicados
+  direccion              String?
+  lugarNacimiento        String?
+  fechaNacimiento        DateTime?
+  telefono               String?
+  edad                   Int?
+  sexo                   String?
+  tipoSangre             String? // A+, A-, B+, B-, AB+, AB-, O+, O-
+  estadoCivil            String?
+  ocupacion              String?
+  religion               String?
+  nacionalidad           String?
+  nombreConyuge          String?
+  direccionConyuge       String?
+  telefonoConyuge        String?
+  nombrePadre            String?
+  nombreMadre            String?
+  contactoEmergencia     String? // nombre de la persona a contactar
+  direccionEmergencia    String?
+  telefonoEmergencia     String? // telefono de esa misma persona
+  parentesco             String?
+  otrasHospitalizaciones String?
+  referidoPor            String?
   // Sprint 1: encargado legal o administrativo del paciente, separado del
   // contacto de emergencia (pueden ser personas distintas).
-  encargadoNombre    String?
-  encargadoTelefono  String?
+  encargadoNombre        String?
+  encargadoTelefono      String?
 
   // RF-05: ingreso
-  referidoDe         String? // institucion o medico, texto libre
-  medicoReferenteId  Int?    // si el referente es un medico registrado (Modulo 4)
-  serviciosSolicitados String?
+  referidoDe              String? // institucion o medico, texto libre
+  medicoReferenteId       Int? // si el referente es un medico registrado (Modulo 4)
+  serviciosSolicitados    String?
   impresionClinicaIngreso String?
-  fechaIngreso       DateTime?
+  fechaIngreso            DateTime?
 
   // RF-06/RF-08: egreso
-  fechaEgreso        DateTime?
+  fechaEgreso             DateTime?
   diagnosticoEgresoCodigo String?
   complicacionesCodigo    String?
   operacionesCodigo       String?
-  condicionEgreso    String? // curado, contraindicado, referido, mejorado, fallecido_antes_48, fallecido_despues_48
-  autopsia           Boolean?
-  causaMuerte        String?
+  condicionEgreso         String? // curado, contraindicado, referido, mejorado, fallecido_antes_48, fallecido_despues_48
+  autopsia                Boolean?
+  causaMuerte             String?
 
   creadoEn DateTime @default(now())
 
-  medicoReferente    MedicoReferente?     @relation(fields: [medicoReferenteId], references: [id])
+  medicoReferente    MedicoReferente?    @relation(fields: [medicoReferenteId], references: [id])
   maternidad         RegistroMaternidad?
   egresoClinico      EgresoClinico?
   documentos         DocumentoPaciente[]
@@ -178,12 +183,12 @@ model Paciente {
 // Las columnas de texto plano legacy se mantienen temporalmente hasta
 // validar la migracion historica (ver scripts/migrar-egreso-cifrado.js).
 model EgresoClinico {
-  id           Int      @id @default(autoincrement())
-  pacienteId   Int      @unique // relacion uno a uno con Paciente
-  textoCifrado String   // payload JSON cifrado (AES-256-GCM)
-  iv           String
-  authTag      String
-  creadoEn     DateTime @default(now())
+  id            Int      @id @default(autoincrement())
+  pacienteId    Int      @unique // relacion uno a uno con Paciente
+  textoCifrado  String // payload JSON cifrado (AES-256-GCM)
+  iv            String
+  authTag       String
+  creadoEn      DateTime @default(now())
   actualizadoEn DateTime @updatedAt
 
   paciente Paciente @relation(fields: [pacienteId], references: [id])
@@ -202,25 +207,25 @@ model EgresoClinico {
 // de integridad y auditoria de creacion. La eliminacion es logica
 // (eliminadoEn) segun politica de retencion.
 model DocumentoPaciente {
-  id             Int       @id @default(autoincrement())
-  pacienteId     Int
-  nombreOriginal String
-  nombreArchivo  String    // nombre interno aleatorio generado por el servidor
-  mimeType       String
-  tamano         Int
-  checksum       String    // SHA-256 del binario original para integridad
-  paginas        Int       @default(1)
-  tipoDocumental String?   // ej. "identificacion", "expediente", "constancia"
+  id                     Int       @id @default(autoincrement())
+  pacienteId             Int
+  nombreOriginal         String
+  nombreArchivo          String // nombre interno aleatorio generado por el servidor
+  mimeType               String
+  tamano                 Int
+  checksum               String // SHA-256 del binario original para integridad
+  paginas                Int       @default(1)
+  tipoDocumental         String? // ej. "identificacion", "expediente", "constancia"
   // Dev-Mari: fecha escrita en el papel original (cuando el doctor lo lleno),
   // extraida por OCR o capturada a mano. Distinta de creadoEn, que es cuando
   // el registro se creo en el sistema.
   fechaDocumentoOriginal DateTime?
-  registradoPor  Int
-  creadoEn       DateTime  @default(now())
-  eliminadoEn    DateTime?
+  registradoPor          Int
+  creadoEn               DateTime  @default(now())
+  eliminadoEn            DateTime?
 
-  paciente     Paciente @relation(fields: [pacienteId], references: [id])
-  registrador  Usuario  @relation("DocumentoRegistradoPor", fields: [registradoPor], references: [id])
+  paciente    Paciente @relation(fields: [pacienteId], references: [id])
+  registrador Usuario  @relation("DocumentoRegistradoPor", fields: [registradoPor], references: [id])
 
   @@index([pacienteId])
   @@index([creadoEn])
@@ -229,42 +234,45 @@ model DocumentoPaciente {
 
 // RF-07: seccion de maternidad (cuando aplica)
 model RegistroMaternidad {
-  id                Int      @id @default(autoincrement())
-  pacienteId        Int      @unique
-  numeroHijo        Int?
-  fecha             DateTime?
-  hora              String?
-  sexo              String?
+  id                  Int       @id @default(autoincrement())
+  pacienteId          Int       @unique
+  numeroHijo          Int?
+  fecha               DateTime?
+  hora                String?
+  sexo                String?
   condicionEgresoBebe String?
+  autopsiaBebe        Boolean?
+  causaMuerteBebe     String?
+  fechaMuerteBebe     DateTime?
 
   // Dev-Mari: datos del bebe y de sus padres al registrar el nacimiento. La
   // madre es la propia paciente (ya esta registrada); del padre no hay
   // registro previo, por eso se captura aqui. Todo opcional: el recien
   // nacido puede no tener nombre ni DPI/CUI al momento del parto.
-  bebeNombre        String?
-  padreNombre       String?
-  padreDpi          String?
-  padreTelefono     String?
+  bebeNombre    String?
+  padreNombre   String?
+  padreDpi      String?
+  padreTelefono String?
 
   paciente Paciente @relation(fields: [pacienteId], references: [id])
 }
 
 // Modulo 2: Expediente Clinico
 model Diagnostico {
-  id             Int      @id @default(autoincrement())
-  pacienteId     Int
-  textoCifrado   String   // RF-10: contenido cifrado (AES-256-GCM) — JSON con la plantilla estructurada
-  iv             String
-  authTag        String
-  codigoCie      String?
-  tipoAtencion   String?  // consulta_externa | emergencia | hospitalizacion | seguimiento
-  servicio       String?
-  salaCama       String?
-  registradoPor  Int
-  creadoEn       DateTime @default(now())
+  id            Int      @id @default(autoincrement())
+  pacienteId    Int
+  textoCifrado  String // RF-10: contenido cifrado (AES-256-GCM) — JSON con la plantilla estructurada
+  iv            String
+  authTag       String
+  codigoCie     String?
+  tipoAtencion  String? // consulta_externa | emergencia | hospitalizacion | seguimiento
+  servicio      String?
+  salaCama      String?
+  registradoPor Int
+  creadoEn      DateTime @default(now())
 
-  paciente  Paciente @relation(fields: [pacienteId], references: [id])
-  registrador Usuario @relation("DiagnosticoRegistradoPor", fields: [registradoPor], references: [id])
+  paciente    Paciente @relation(fields: [pacienteId], references: [id])
+  registrador Usuario  @relation("DiagnosticoRegistradoPor", fields: [registradoPor], references: [id])
 
   @@index([pacienteId])
 }
@@ -279,7 +287,7 @@ model DiagnosticoArchivo {
   id             Int      @id @default(autoincrement())
   pacienteId     Int
   nombreOriginal String
-  nombreArchivo  String   // nombre generado en disco
+  nombreArchivo  String // nombre generado en disco
   mimeType       String
   tamano         Int
   creadoEn       DateTime @default(now())
@@ -311,12 +319,12 @@ model AccesoDiagnostico {
 
 // Modulo 3: Tratamiento y Medicamentos Intrahospitalarios
 model TratamientoItem {
-  id           Int      @id @default(autoincrement())
-  pacienteId   Int
-  descripcion  String
-  dosis        String?
-  costo        Decimal  @db.Decimal(10, 2)
-  origen       String   // "intrahospitalario" (insumo/procedimiento) | "farmacia" (medicamento de farmacia usado en el paciente)
+  id             Int      @id @default(autoincrement())
+  pacienteId     Int
+  descripcion    String
+  dosis          String?
+  costo          Decimal  @db.Decimal(10, 2)
+  origen         String // "intrahospitalario" (insumo/procedimiento) | "farmacia" (medicamento de farmacia usado en el paciente)
   // RF-13: personal medico de un procedimiento quirurgico. Opcionales porque
   // no todo TratamientoItem es una cirugia (ej. una sonda o un medicamento).
   cirujano       String?
@@ -325,8 +333,8 @@ model TratamientoItem {
   anestesiologo  String?
   // RF-15: ambos origenes se cargan al costeo del paciente (FacturaHospital);
   // solo una venta directa de farmacia (VentaFarmacia) se factura aparte.
-  facturado    Boolean  @default(false) // evita doble cobro al facturar (RNF-13)
-  fecha        DateTime @default(now())
+  facturado      Boolean  @default(false) // evita doble cobro al facturar (RNF-13)
+  fecha          DateTime @default(now())
 
   paciente Paciente @relation(fields: [pacienteId], references: [id])
 
@@ -334,14 +342,14 @@ model TratamientoItem {
 }
 
 model Receta {
-  id             Int      @id @default(autoincrement())
-  pacienteId     Int
-  medicoId       Int
-  medicamento    String
-  dosis          String
-  indicaciones   String
-  duracion       String
-  creadoEn       DateTime @default(now())
+  id           Int      @id @default(autoincrement())
+  pacienteId   Int
+  medicoId     Int
+  medicamento  String
+  dosis        String
+  indicaciones String
+  duracion     String
+  creadoEn     DateTime @default(now())
 
   paciente Paciente @relation(fields: [pacienteId], references: [id])
   medico   Usuario  @relation("RecetaMedico", fields: [medicoId], references: [id])
@@ -351,11 +359,11 @@ model Receta {
 
 // Modulo 4: Clientes Referidos
 model MedicoReferente {
-  id            Int      @id @default(autoincrement())
-  nombre        String
-  especialidad  String?
-  comisionQ     Decimal  @db.Decimal(10, 2)
-  creadoEn      DateTime @default(now())
+  id           Int      @id @default(autoincrement())
+  nombre       String
+  especialidad String?
+  comisionQ    Decimal  @db.Decimal(10, 2)
+  creadoEn     DateTime @default(now())
 
   pacientesReferidos Paciente[]
 }
@@ -367,7 +375,7 @@ model FacturaHospital {
   costoHospital    Decimal  @db.Decimal(10, 2)
   costoTratamiento Decimal  @db.Decimal(10, 2)
   total            Decimal  @db.Decimal(10, 2)
-  formaPago        String   // "transferencia" | "efectivo"
+  formaPago        String // "transferencia" | "efectivo"
   creadoEn         DateTime @default(now())
 
   paciente Paciente @relation(fields: [pacienteId], references: [id])
@@ -400,23 +408,23 @@ model CategoriaFiscal {
 // quiere entregado o solo se queda desarrollado (igual que los reportes de
 // credito fiscal/contribuyente descartados antes).
 model GastoHospital {
-  id                Int       @id @default(autoincrement())
-  fecha             DateTime  // fecha de la factura/gasto (puede diferir de creadoEn)
-  proveedor         String
-  descripcion       String?
-  numeroFactura     String?
-  monto             Decimal   @db.Decimal(10, 2)
-  categoriaFiscalId Int?
+  id                    Int      @id @default(autoincrement())
+  fecha                 DateTime // fecha de la factura/gasto (puede diferir de creadoEn)
+  proveedor             String
+  descripcion           String?
+  numeroFactura         String?
+  monto                 Decimal  @db.Decimal(10, 2)
+  categoriaFiscalId     Int?
   // 24/09/2026: monto*tasa de la categoria elegida, calculado y congelado al
   // momento de registrar el gasto (no se recalcula si luego cambia la tasa
   // de la categoria, para no alterar gastos ya capturados). Es informativo
   // -- el calculo real del impuesto lo sigue haciendo el contador.
   montoImpuestoEstimado Decimal? @db.Decimal(10, 2)
-  registradoPor     Int
-  creadoEn          DateTime  @default(now())
+  registradoPor         Int
+  creadoEn              DateTime @default(now())
 
   categoriaFiscal CategoriaFiscal? @relation(fields: [categoriaFiscalId], references: [id])
-  registrador     Usuario         @relation("GastoRegistradoPor", fields: [registradoPor], references: [id])
+  registrador     Usuario          @relation("GastoRegistradoPor", fields: [registradoPor], references: [id])
 
   @@index([fecha])
   @@index([categoriaFiscalId])
@@ -443,12 +451,12 @@ model FacturaFarmacia {
 
 // Modulo 6: Farmacia (independiente, vision a futuro)
 model MedicamentoInventario {
-  id               Int      @id @default(autoincrement())
+  id               Int       @id @default(autoincrement())
   nombre           String
   tipo             String?
   presentacion     String?
-  stock            Int      @default(0)
-  stockMinimo      Int      @default(10) // RF-25
+  stock            Int       @default(0)
+  stockMinimo      Int       @default(10) // RF-25
   precioVenta      Decimal  @db.Decimal(10, 2) @default(0)
   fechaVencimiento DateTime? // RF-26
   proveedor        String?
@@ -460,12 +468,12 @@ model MedicamentoInventario {
 }
 
 model MovimientoInventario {
-  id             Int      @id @default(autoincrement())
-  medicamentoId  Int
-  tipo           String   // "entrada" | "salida"
-  cantidad       Int
-  motivo         String?  // "venta directa" | "uso intrahospitalario" | "compra"
-  fecha          DateTime @default(now())
+  id            Int      @id @default(autoincrement())
+  medicamentoId Int
+  tipo          String // "entrada" | "salida"
+  cantidad      Int
+  motivo        String? // "venta directa" | "uso intrahospitalario" | "compra"
+  fecha         DateTime @default(now())
 
   medicamento MedicamentoInventario @relation(fields: [medicamentoId], references: [id])
 
@@ -494,11 +502,11 @@ model VentaFarmacia {
 
 // Modulo 7: Bitacora de Visitas
 model BitacoraVisita {
-  id           Int      @id @default(autoincrement())
-  pacienteId   Int
-  autorId      Int
-  descripcion  String
-  fecha        DateTime @default(now())
+  id          Int      @id @default(autoincrement())
+  pacienteId  Int
+  autorId     Int
+  descripcion String
+  fecha       DateTime @default(now())
 
   paciente Paciente @relation(fields: [pacienteId], references: [id])
   autor    Usuario  @relation("BitacoraAutor", fields: [autorId], references: [id])

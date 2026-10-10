@@ -4,10 +4,13 @@
 // SMOKE y los borra al final.   Uso:  npm run test:integracion
 // Variable opcional: BASE=http://localhost:4000/api
 
+import "dotenv/config";
 
 const BASE = process.env.BASE || "http://localhost:4000/api";
+const ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD || "CambiarEsta123";
 const PRISMA_URL = new URL("../src/config/prisma.js", import.meta.url).href;
 const SUF = Date.now().toString(36);
+const HIST = String(Date.now());
 const PW = "Smoke12345";
 
 let pass = 0, fail = 0;
@@ -31,6 +34,14 @@ async function api(method, path, { body, token, form, headers = {} } = {}) {
   return { status: res.status, data };
 }
 const st = (r) => `(HTTP ${r.status}${r.data?.error ? ": " + r.data.error : ""})`;
+const pacienteValido = (nombreCompleto, dpi, historiaClinica = HIST) => ({
+  nombreCompleto, dpi, historiaClinica, direccion: "Zona 1, Cobán", telefono: "55512345",
+  lugarNacimiento: "Cobán", fechaNacimiento: "2000-03-01", edad: 26, sexo: "Masculino",
+  estadoCivil: "S", ocupacion: "Comerciante", religion: "Ninguna", nacionalidad: "Guatemalteca",
+  direccionConyuge: "Zona 2", telefonoConyuge: "55554321", direccionEmergencia: "Zona 3",
+  otrasHospitalizaciones: "Ninguna", referidoPor: "Dr. QA",
+  fechaIngreso: new Date().toISOString(),
+});
 
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
 
@@ -38,7 +49,7 @@ const creados = { pacientes: [], usuarios: [] };
 
 async function main() {
   console.log("\n== AUTENTICACION ==");
-  let r = await api("POST", "/auth/login", { body: { correo: "admin@hospitalverapaz.gt", password: "CambiarEsta123" } });
+  let r = await api("POST", "/auth/login", { body: { correo: "admin@hospitalverapaz.gt", password: ADMIN_PASSWORD } });
   check("login admin", r.status === 200 && r.data?.token, st(r));
   const admin = r.data.token;
   r = await api("POST", "/auth/login", { body: { correo: "admin@hospitalverapaz.gt", password: "mal" } });
@@ -74,16 +85,18 @@ async function main() {
   console.log("\n== PACIENTES (Registro y Admision) ==");
   r = await api("POST", "/pacientes", { token: tk.enf, body: { nombreCompleto: "SMOKE No", dpi: "9000000000099" } });
   check("Enfermeria NO puede registrar pacientes (403)", r.status === 403, st(r));
-  r = await api("POST", "/pacientes", { token: tk.recep, body: { nombreCompleto: "SMOKE Paciente", dpi: "9000000000001", historiaClinica: `HC-SMK-${SUF}`, telefono: "55512345", fechaNacimiento: "2000-03-01", sexo: "Femenino" } });
-  check("Recepcion registra paciente (historia manual)", r.status === 201 && r.data.historiaClinica === `HC-SMK-${SUF}`, st(r));
+  const datosPaciente = pacienteValido("SMOKE Paciente", "9000000000001");
+  r = await api("POST", "/pacientes", { token: tk.recep, body: datosPaciente });
+  check("Recepcion registra paciente con historia clínica numérica", r.status === 201 && r.data.historiaClinica === HIST, st(r));
+  check("datos opcionales nuevos se guardan en el paciente", r.data.direccionConyuge === "Zona 2" && r.data.telefonoConyuge === "55554321" && r.data.direccionEmergencia === "Zona 3" && r.data.referidoPor === "Dr. QA", st(r));
   const P = r.data.id; creados.pacientes.push(P);
-  r = await api("POST", "/pacientes", { token: tk.recep, body: { nombreCompleto: "SMOKE Dup", dpi: "9000000000001" } });
+  r = await api("POST", "/pacientes", { token: tk.recep, body: pacienteValido("SMOKE Dup", "9000000000001", String(Number(HIST) + 1)) });
   check("DPI duplicado -> 409", r.status === 409, st(r));
-  r = await api("POST", "/pacientes", { token: tk.recep, body: { nombreCompleto: "SMOKE Malo", dpi: "123" } });
+  r = await api("POST", "/pacientes", { token: tk.recep, body: pacienteValido("SMOKE Malo", "123", String(Number(HIST) + 2)) });
   check("DPI de largo incorrecto -> 400", r.status === 400, st(r));
   r = await api("GET", `/pacientes/${P}`, { token: tk.medico });
   check("Consulta puede leer la ficha del paciente", r.status === 200 && r.data.nombreCompleto === "SMOKE Paciente", st(r));
-  r = await api("GET", `/pacientes?buscar=HC-SMK-${SUF}&page=1`, { token: tk.enf });
+  r = await api("GET", `/pacientes?buscar=${HIST}&page=1`, { token: tk.enf });
   check("busqueda paginada por historia clinica", r.status === 200 && r.data.items?.length === 1, st(r));
   r = await api("PUT", `/pacientes/${P}`, { token: tk.recep, body: { tipoSangre: "O+", serviciosSolicitados: "Consulta", fechaIngreso: new Date().toISOString() } });
   check("guardar ingreso (actualizacion parcial)", r.status === 200, st(r));
@@ -97,6 +110,17 @@ async function main() {
   check("autopsia con paciente vivo -> rechazada (422)", r.status === 422, st(r));
   r = await api("PUT", `/pacientes/${P}`, { token: tk.recep, body: { maternidad: { numeroHijo: 1, fecha: "2026-03-01T00:00:00.000Z", sexo: "Femenino", padreNombre: "SMOKE Padre", padreDpi: "2456789011601" } } });
   check("maternidad con datos del padre", r.status === 200, st(r));
+  r = await api("PUT", `/pacientes/${P}`, { token: tk.recep, body: {
+    egresoClinico: {
+      diagnosticosEgreso: [{ descripcion: "Bronquitis", codigo: "J40" }],
+      complicacionesEgreso: [{ descripcion: "Infección", codigo: "B99" }],
+      operacionesLista: ["Apendicectomía", "Sutura"],
+    },
+    maternidad: { autopsiaBebe: true, causaMuerteBebe: "Complicación neonatal", fechaMuerteBebe: "2026-03-02T00:00:00.000Z", hora: "14:30", sexo: "F" },
+  } });
+  check("guardar listas de egreso cifradas y datos de autopsia del bebé", r.status === 200, st(r));
+  r = await api("GET", `/pacientes/${P}`, { token: tk.recep });
+  check("leer listas ordenadas/códigos y datos de autopsia descifrados", r.data.egresoClinico?.diagnosticosEgreso?.[0]?.codigo === "J40" && r.data.egresoClinico?.complicacionesEgreso?.[0]?.codigo === "B99" && r.data.egresoClinico?.operacionesLista?.length === 2 && r.data.maternidad?.autopsiaBebe === true && r.data.maternidad?.fechaMuerteBebe, st(r));
 
   console.log("\n== CLIENTES REFERIDOS ==");
   r = await api("POST", "/referidos", { token: tk.recep, body: { nombre: `SMOKE Dr Ref ${SUF}`, especialidad: "Cirugía", comisionQ: 150 } });
@@ -174,7 +198,7 @@ async function main() {
   check("Facturacion NO puede ver los documentos (403, rol no autorizado)", r.status === 403, st(r));
   r = await api("GET", `/pacientes/${P}/documentos/${A}`, { token: tk.medico });
   check("medico descarga el documento y llega con su Content-Type real (imagen, no forzado a PDF)", r.status === 200 && Buffer.isBuffer(r.data) && r.data.equals(PNG), st(r));
-  const otro = await api("POST", "/pacientes", { token: tk.recep, body: { nombreCompleto: "SMOKE Otro", dpi: "9000000000002" } });
+  const otro = await api("POST", "/pacientes", { token: tk.recep, body: pacienteValido("SMOKE Otro", "9000000000002", String(Number(HIST) + 3)) });
   creados.pacientes.push(otro.data.id);
   r = await api("GET", `/pacientes/${otro.data.id}/documentos/${A}`, { token: tk.medico });
   check("el documento de OTRO paciente no se descarga por esa URL (404)", r.status === 404, st(r));
