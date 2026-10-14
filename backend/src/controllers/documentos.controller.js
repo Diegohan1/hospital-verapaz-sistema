@@ -39,7 +39,10 @@ const DOCUMENT_MAX_PAGES = Number(process.env.DOCUMENT_MAX_PAGES || 30);
 export const uploadDocumento = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: DOCUMENT_MAX_MB * 1024 * 1024 },
-}).single("documento");
+}).fields([
+  { name: "documento", maxCount: 1 },
+  { name: "adjuntos", maxCount: 10 },
+]);
 
 // Metadatos que se exponen; nunca la ruta fisica ni el nombre interno
 const SELECT_METADATOS = {
@@ -57,7 +60,7 @@ const SELECT_METADATOS = {
 // cifrado con nombre interno aleatorio.
 export async function subir(req, res) {
   const pacienteId = Number(req.params.id);
-  const file = req.file;
+  const file = req.files?.documento?.[0];
   if (!file) return res.status(400).json({ error: "Adjunte un archivo" });
 
   const errorArchivo = validarArchivo(file);

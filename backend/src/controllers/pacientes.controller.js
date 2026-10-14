@@ -11,7 +11,7 @@ import { ENCRYPTION_KEY } from "../config/env.js";
 import { registrarActividad } from "../services/actividad.service.js";
 import { leerPaginacion } from "../utils/paginacion.util.js";
 import { ROLES } from "../utils/roles.util.js";
-import { validarPdf, guardarArchivoCifrado } from "../utils/archivos.util.js";
+import { validarPdf, guardarArchivoCifrado, validarArchivo } from "../utils/archivos.util.js";
 
 const DOCUMENTOS_DIR = path.join(process.cwd(), "uploads", "documentos");
 const DOCUMENT_MAX_MB = Number(process.env.DOCUMENT_MAX_MB || 20);
@@ -371,9 +371,15 @@ export async function crear(req, res) {
 
   // El PDF se valida antes de tocar la base de datos: si no es un PDF
   // valido, no tiene sentido crear el paciente sin su respaldo escaneado.
-  if (req.file) {
-    const errorPdf = validarPdf(req.file);
+  const documento = req.files?.documento?.[0] || null;
+  const adjuntos = req.files?.adjuntos || [];
+  if (documento) {
+    const errorPdf = validarPdf(documento);
     if (errorPdf) return res.status(422).json({ error: errorPdf });
+  }
+  for (const archivo of adjuntos) {
+    const errorAdjunto = validarArchivo(archivo);
+    if (errorAdjunto) return res.status(422).json({ error: `Adjunto "${archivo.originalname}": ${errorAdjunto}` });
   }
 
   const paciente = await prisma.$transaction(async (tx) => {
@@ -392,11 +398,11 @@ export async function crear(req, res) {
       const { encrypted, iv, authTag } = encrypt(JSON.stringify(payloadEgreso), ENCRYPTION_KEY);
       await tx.egresoClinico.create({ data: { pacienteId: creado.id, textoCifrado: encrypted, iv, authTag } });
     }
-    if (req.file) {
-      const checksum = crypto.createHash("sha256").update(req.file.buffer).digest("hex");
-      const nombreArchivo = guardarArchivoCifrado(req.file.buffer, DOCUMENTOS_DIR, ENCRYPTION_KEY);
+    if (documento) {
+      const checksum = crypto.createHash("sha256").update(documento.buffer).digest("hex");
+      const nombreArchivo = guardarArchivoCifrado(documento.buffer, DOCUMENTOS_DIR, ENCRYPTION_KEY);
       const nombreOriginal = path
-        .basename(req.body.nombreDocumento || req.file.originalname || "expediente.pdf")
+        .basename(req.body.nombreDocumento || documento.originalname || "expediente.pdf")
         .replace(/[^\w.\-() ]/g, "_");
       await tx.documentoPaciente.create({
         data: {
@@ -404,11 +410,29 @@ export async function crear(req, res) {
           nombreOriginal,
           nombreArchivo,
           mimeType: "application/pdf",
-          tamano: req.file.size,
+          tamano: documento.size,
           checksum,
           paginas: Number(req.body.paginas) || 1,
           tipoDocumental: "expediente_admision",
           fechaDocumentoOriginal: req.body.fechaDocumentoOriginal ? new Date(req.body.fechaDocumentoOriginal) : null,
+          registradoPor: req.user.id,
+        },
+      });
+    }
+    for (const archivo of adjuntos) {
+      const checksum = crypto.createHash("sha256").update(archivo.buffer).digest("hex");
+      const nombreArchivo = guardarArchivoCifrado(archivo.buffer, DOCUMENTOS_DIR, ENCRYPTION_KEY);
+      const nombreOriginal = path.basename(archivo.originalname || "resultado_clinico").replace(/[^\w.\-() ]/g, "_");
+      await tx.documentoPaciente.create({
+        data: {
+          pacienteId: creado.id,
+          nombreOriginal,
+          nombreArchivo,
+          mimeType: archivo.mimetype,
+          tamano: archivo.size,
+          checksum,
+          paginas: 1,
+          tipoDocumental: "resultado_clinico",
           registradoPor: req.user.id,
         },
       });
@@ -439,7 +463,7 @@ export async function crear(req, res) {
   await registrarActividad(
     req.user.id,
     "crear_paciente",
-    `${paciente.nombreCompleto} (${paciente.historiaClinica})${req.file ? " + expediente escaneado" : ""}`
+    `${paciente.nombreCompleto} (${paciente.historiaClinica})${documento ? " + expediente escaneado" : ""}`
   );
   res.status(201).json(paciente);
 }

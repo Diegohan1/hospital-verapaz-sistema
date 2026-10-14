@@ -218,6 +218,8 @@ export function RegistroPage({ onVerExpediente }) {
   // exista — ya no depende de tener uno seleccionado. El PDF queda aqui,
   // pendiente, hasta que se registra el paciente (un solo POST con ambos).
   const [documentoPendiente, setDocumentoPendiente] = useState(null);
+  const [adjuntos, setAdjuntos] = useState([]);
+  const [adjuntosIngreso, setAdjuntosIngreso] = useState([]);
   const { data: pacienteDetalle, reload: reloadPacienteDetalle } = useFetch(
     ingresoPacienteId ? `/pacientes/${ingresoPacienteId}` : null,
     { enabled: !!ingresoPacienteId }
@@ -386,8 +388,18 @@ export function RegistroPage({ onVerExpediente }) {
     }
     try {
       await api.put(`/pacientes/${ingresoPacienteId}`, payload);
+      if (adjuntosIngreso.length) {
+        for (const archivo of adjuntosIngreso) {
+          const fd = new FormData();
+          fd.append("documento", archivo);
+          fd.append("tipoDocumental", "resultado_clinico");
+          await api.post(`/pacientes/${ingresoPacienteId}/documentos`, fd);
+        }
+      }
       setMensajeIngreso({ tone: "success", texto: "Datos de ingreso/egreso guardados correctamente." });
+      setAdjuntosIngreso([]);
       reloadPacienteDetalle();
+      reloadDocumentos();
     } catch (err) {
       setMensajeIngreso({ tone: "error", texto: err.message });
     } finally {
@@ -519,8 +531,36 @@ export function RegistroPage({ onVerExpediente }) {
       <p className="text-[11px] mt-1" style={{ color: COLORS.gold }}>
         Leído del escaneo — verifique que coincida con el papel.
       </p>
-    );
+  );
+}
+
+function ListaAdjuntos({ archivos, onChange, titulo = "Adjuntar archivos (resultados clínicos, PDF o imagen)" }) {
+  function agregar(e) {
+    const nuevos = Array.from(e.target.files || []);
+    if (nuevos.length) onChange([...archivos, ...nuevos].slice(0, 10));
+    e.target.value = "";
   }
+  return (
+    <div className="col-span-1 sm:col-span-2 lg:col-span-3">
+      <div className="text-xs font-semibold mb-2" style={{ color: "#475066" }}>{titulo}</div>
+      <input type="file" multiple accept=".pdf,image/png,image/jpeg" onChange={agregar} className="text-sm" aria-label="Adjuntar archivos" />
+      {archivos.length > 0 && (
+        <ul className="flex flex-col gap-1 mt-2">
+          {archivos.map((archivo, index) => (
+            <li key={index} className="flex items-center gap-2 text-sm">
+              <span>{archivo.name}</span>
+              <span className="text-xs" style={{ color: "#888" }}>({(archivo.size / 1024).toFixed(0)} KB)</span>
+              <button type="button" onClick={() => onChange(archivos.filter((_, i) => i !== index))} className="text-gray-400 hover:text-red-500" aria-label={`Quitar archivo ${index + 1}`}>
+                <Trash2 size={14} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="text-xs mt-1" style={{ color: "#888" }}>Máximo 10 archivos (PDF, PNG o JPG). Se guardan como resultados clínicos del paciente.</p>
+    </div>
+  );
+}
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -602,21 +642,21 @@ export function RegistroPage({ onVerExpediente }) {
       };
 
       let paciente;
-      if (documentoPendiente) {
-        // Un solo POST con los datos del paciente + el PDF escaneado: el
-        // backend crea ambos en la misma transaccion.
+      if (documentoPendiente || adjuntos.length) {
+        // Un solo POST con los datos del paciente + expediente escaneado + adjuntos.
         const fd = new FormData();
         for (const [campo, valor] of Object.entries(datosPaciente)) {
           if (valor !== undefined && valor !== null && valor !== "") {
             fd.append(campo, typeof valor === "object" ? JSON.stringify(valor) : valor);
           }
         }
-        fd.append("documento", new File([documentoPendiente.blob], documentoPendiente.nombre, { type: "application/pdf" }));
-        fd.append("paginas", String(documentoPendiente.paginas));
-        // La fecha del papel es la que el doctor anoto como fecha de ingreso:
-        // si no se capturo aparte, se usa esa.
-        const fechaPapel = documentoPendiente.fechaDocumentoOriginal || form.fechaIngreso;
-        if (fechaPapel) fd.append("fechaDocumentoOriginal", fechaPapel);
+        if (documentoPendiente) {
+          fd.append("documento", new File([documentoPendiente.blob], documentoPendiente.nombre, { type: "application/pdf" }));
+          fd.append("paginas", String(documentoPendiente.paginas));
+          const fechaPapel = documentoPendiente.fechaDocumentoOriginal || form.fechaIngreso;
+          if (fechaPapel) fd.append("fechaDocumentoOriginal", fechaPapel);
+        }
+        adjuntos.forEach((archivo) => fd.append("adjuntos", archivo));
         paciente = await api.post("/pacientes", fd);
       } else {
         paciente = await api.post("/pacientes", datosPaciente);
@@ -628,6 +668,7 @@ export function RegistroPage({ onVerExpediente }) {
       });
       setForm(CAMPOS_VACIOS);
       setDocumentoPendiente(null);
+      setAdjuntos([]);
       setMensajeDocumento(null);
       setCamposOCR(new Set());
       setOcrDetalle(null);
@@ -851,6 +892,7 @@ export function RegistroPage({ onVerExpediente }) {
               <ListaCodificada titulo="Diagnóstico de egreso (en orden de importancia)" singular="Diagnóstico" items={form.diagnosticosEgreso} onChange={(items) => setCampo("diagnosticosEgreso", items)} />
               <ListaCodificada titulo="Complicaciones" singular="Complicación" items={form.complicacionesEgreso} onChange={(items) => setCampo("complicacionesEgreso", items)} />
               <ListaOperaciones items={form.operacionesLista} onChange={(items) => setCampo("operacionesLista", items)} />
+              <ListaAdjuntos archivos={adjuntos} onChange={setAdjuntos} />
 
               <div className="col-span-1 sm:col-span-2 lg:col-span-3 mt-2 pt-4" style={{ borderTop: `1px solid ${COLORS.border}` }}>
                 <div className="font-semibold text-sm mb-2" style={{ color: COLORS.navy }}>Maternidad</div>
@@ -968,6 +1010,7 @@ export function RegistroPage({ onVerExpediente }) {
                 <ListaCodificada titulo="Diagnóstico de egreso (en orden de importancia)" singular="Diagnóstico" items={ingresoForm.diagnosticosEgreso} onChange={(items) => setCampoIngreso("diagnosticosEgreso", items)} />
                 <div className="mt-4"><ListaCodificada titulo="Complicaciones" singular="Complicación" items={ingresoForm.complicacionesEgreso} onChange={(items) => setCampoIngreso("complicacionesEgreso", items)} /></div>
                 <div className="mt-4"><ListaOperaciones items={ingresoForm.operacionesLista} onChange={(items) => setCampoIngreso("operacionesLista", items)} /></div>
+                <div className="mt-4"><ListaAdjuntos archivos={adjuntosIngreso} onChange={setAdjuntosIngreso} titulo="Adjuntar archivos (resultados clínicos, PDF o imagen)" /></div>
                 {esFallecido && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4 pt-4 animate-fade-in" style={{ borderTop: `1px dashed ${COLORS.border}` }}>
                     <FormField label="Autopsia"><OpcionesExclusivas name="autopsiaPaciente" value={ingresoForm.autopsia} onChange={(v) => setCampoIngreso("autopsia", v)} options={[{ value: "si", label: "Sí" }, { value: "no", label: "No" }]} /></FormField>
