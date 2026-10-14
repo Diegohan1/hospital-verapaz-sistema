@@ -88,6 +88,7 @@ async function descifrarDiagnostico(diagnostico) {
   return {
     id: diagnostico.id,
     pacienteId: diagnostico.pacienteId,
+    ingresoId: diagnostico.ingresoId,
     codigoCie: diagnostico.codigoCie,
     tipoAtencion: diagnostico.tipoAtencion,
     servicio: diagnostico.servicio,
@@ -115,6 +116,18 @@ export async function obtenerUno(req, res) {
 
   const [actual, ...anteriores] = await Promise.all(registros.map(descifrarDiagnostico));
 
+  // Admisiones del paciente, cada una con los diagnosticos que le
+  // corresponden (RF-10): asi se puede revisar una admision a la vez sin
+  // pedir un token nuevo por cada una.
+  const ingresos = await prisma.ingreso.findMany({
+    where: { pacienteId },
+    orderBy: { fechaIngreso: "desc" },
+  });
+  const ingresosConDiagnosticos = ingresos.map((i) => ({
+    ...i,
+    diagnosticos: [actual, ...anteriores].filter((d) => d.ingresoId === i.id),
+  }));
+
   // RNF-08: deja constancia de quien vio el diagnostico y cuando
   await prisma.accesoDiagnostico.create({
     data: {
@@ -126,7 +139,7 @@ export async function obtenerUno(req, res) {
     },
   });
 
-  res.json({ ...actual, historial: anteriores });
+  res.json({ ...actual, historial: anteriores, ingresos: ingresosConDiagnosticos });
 }
 
 // RF-10: registrar el diagnostico, cifrado antes de guardarse. La peticion
@@ -144,6 +157,18 @@ export async function crear(req, res) {
   const { codigoCie, tipoAtencion, servicio, salaCama } = req.body;
   if (!datos || !pacienteId) {
     return res.status(400).json({ error: "pacienteId y datos son requeridos" });
+  }
+
+  // Admision a la que pertenece el diagnostico: la que manda el cliente o,
+  // si no viene, la mas reciente del paciente (las admisiones previas siguen
+  // conservando sus propios diagnosticos).
+  let ingresoId = req.body.ingresoId ? Number(req.body.ingresoId) : null;
+  if (ingresoId) {
+    const ingreso = await prisma.ingreso.findFirst({ where: { id: ingresoId, pacienteId }, select: { id: true } });
+    if (!ingreso) return res.status(404).json({ error: "El ingreso indicado no pertenece a este paciente" });
+  } else {
+    const ultimo = await prisma.ingreso.findFirst({ where: { pacienteId }, orderBy: { fechaIngreso: "desc" }, select: { id: true } });
+    ingresoId = ultimo?.id ?? null;
   }
 
   // Sprint 4: validar tipos permitidos antes de persistir nada
@@ -174,7 +199,7 @@ export async function crear(req, res) {
   const { encrypted, iv, authTag } = encrypt(JSON.stringify(datos), KEY);
   const diagnostico = await prisma.diagnostico.create({
     data: {
-      pacienteId, textoCifrado: encrypted, iv, authTag, codigoCie,
+      pacienteId, ingresoId, textoCifrado: encrypted, iv, authTag, codigoCie,
       tipoAtencion, servicio, salaCama, registradoPor: req.user.id,
     },
   });

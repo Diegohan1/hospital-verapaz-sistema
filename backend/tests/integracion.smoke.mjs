@@ -183,6 +183,28 @@ async function main() {
   r = await api("GET", `/expedientes/paciente/${P}`, { token: tk.medico, headers: { "x-temp-token": TOKEN1 } });
   check("el token es de un solo uso (403 al reusar)", r.status === 403, st(r));
 
+  console.log("\n== INGRESOS DEL PACIENTE (multiples admisiones, 13/10/2026) ==");
+  r = await api("GET", `/pacientes/${P}/ingresos`, { token: tk.medico });
+  check("el paciente tiene su primer ingreso desde el registro", r.status === 200 && Array.isArray(r.data) && r.data.length >= 1, st(r));
+  r = await api("GET", `/pacientes/${P}/ingresos`, { token: tk.fact });
+  check("Facturacion no puede ver el historial de ingresos (403)", r.status === 403, st(r));
+  r = await api("POST", `/pacientes/${P}/ingresos`, { token: tk.medico, body: { fechaIngreso: new Date().toISOString() } });
+  check("el medico no puede registrar ingresos (403)", r.status === 403, st(r));
+  r = await api("POST", `/pacientes/${P}/ingresos`, { token: tk.recep, body: { fechaIngreso: new Date().toISOString(), impresionClinicaIngreso: "Reingreso QA", serviciosSolicitados: "Emergencia" } });
+  check("Recepcion registra un nuevo ingreso del mismo paciente", r.status === 201 && r.data.id, st(r));
+  const ING = r.data?.id;
+  form = new FormData();
+  form.append("datos", JSON.stringify({ motivoConsulta: "QA reingreso" }));
+  form.append("tipoAtencion", "emergencia");
+  form.append("ingresoId", String(ING));
+  r = await api("POST", `/expedientes/paciente/${P}`, { token: admin, form });
+  check("diagnostico asociado a un ingreso especifico", r.status === 201, st(r));
+  r = await api("POST", "/auth/token", { token: admin, body: { usuarioId: uid.medico, pacienteId: P } });
+  const TOKEN2 = r.data.token;
+  r = await api("GET", `/expedientes/paciente/${P}`, { token: tk.medico, headers: { "x-temp-token": TOKEN2 } });
+  const ingresoNuevo = r.data?.ingresos?.find((x) => x.id === ING);
+  check("el expediente agrupa los diagnosticos por ingreso", r.status === 200 && ingresoNuevo?.diagnosticos?.length === 1 && ingresoNuevo.diagnosticos[0].datos?.motivoConsulta === "QA reingreso", st(r));
+
   console.log("\n== DOCUMENTOS DEL PACIENTE (fusion Anexos + Documentos escaneados, 23/09/2026) ==");
   // Protegido por rol, sin token de acceso temporal (a diferencia del
   // diagnostico y de como era Anexos antes de la fusion): RegistroPage ya
@@ -323,7 +345,7 @@ async function limpiar() {
   await intentar(() => prisma.ventaFarmacia.deleteMany({ where: { medicamentoId: { in: meds } } }));
   await intentar(() => prisma.facturaFarmacia.deleteMany({ where: { registradoPor: { in: uids } } }));
   await intentar(() => prisma.movimientoInventario.deleteMany({ where: { medicamentoId: { in: meds } } }));
-  for (const m of ["accesoDiagnostico", "diagnosticoArchivo", "diagnostico", "documentoPaciente", "registroMaternidad", "egresoClinico", "tratamientoItem", "receta", "bitacoraVisita", "facturaHospital", "movimientoInventario"]) {
+  for (const m of ["accesoDiagnostico", "diagnosticoArchivo", "diagnostico", "ingreso", "documentoPaciente", "registroMaternidad", "egresoClinico", "tratamientoItem", "receta", "bitacoraVisita", "facturaHospital", "movimientoInventario"]) {
     await intentar(() => prisma[m].deleteMany({ where: { pacienteId: { in: pids } } }));
   }
   await intentar(() => prisma.medicamentoInventario.deleteMany({ where: { id: { in: meds } } }));

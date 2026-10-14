@@ -318,7 +318,7 @@ export async function listar(req, res) {
 export async function obtenerUno(req, res) {
   const paciente = await prisma.paciente.findUnique({
     where: { id: Number(req.params.id) },
-    include: { maternidad: true, medicoReferente: true, egresoClinico: true },
+    include: { maternidad: true, medicoReferente: true, egresoClinico: true, ingresos: { orderBy: { fechaIngreso: "desc" } } },
   });
   if (!paciente) return res.status(404).json({ error: "Paciente no encontrado" });
 
@@ -418,6 +418,21 @@ export async function crear(req, res) {
         data: { pacienteId: creado.id, ...tomarCamposMaternidad(req.body.maternidad) },
       });
     }
+    // El primer registro del paciente es tambien su primer ingreso: se crea
+    // la fila de Ingreso para que el historial de admisiones quede completo.
+    const fechaPrimerIngreso = req.body.fechaIngreso ? new Date(req.body.fechaIngreso) : null;
+    if (fechaPrimerIngreso && Number.isFinite(fechaPrimerIngreso.getTime())) {
+      await tx.ingreso.create({
+        data: {
+          pacienteId: creado.id,
+          fechaIngreso: fechaPrimerIngreso,
+          impresionClinicaIngreso: req.body.impresionClinicaIngreso || null,
+          serviciosSolicitados: req.body.serviciosSolicitados || null,
+          referidoDe: req.body.referidoDe || null,
+          referidoPor: req.body.referidoPor || null,
+        },
+      });
+    }
     return conHistoria;
   });
 
@@ -494,4 +509,47 @@ export async function actualizar(req, res) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     throw err;
   }
+}
+
+// Admisiones de un paciente: una identidad (nombre, DPI, demograficos) puede
+// volver a ingresar varias veces. Cada ingreso tiene su propia fecha/hora e
+// impresion clinica de admision, y agrupa los diagnosticos de esa admision.
+export function validarIngreso(body) {
+  if (!body.fechaIngreso || !Number.isFinite(new Date(body.fechaIngreso).getTime())) {
+    return "La fecha de ingreso es requerida y debe ser válida";
+  }
+  return null;
+}
+
+export async function listarIngresos(req, res) {
+  const pacienteId = Number(req.params.id);
+  const paciente = await prisma.paciente.findUnique({ where: { id: pacienteId }, select: { id: true } });
+  if (!paciente) return res.status(404).json({ error: "Paciente no encontrado" });
+  const ingresos = await prisma.ingreso.findMany({ where: { pacienteId }, orderBy: { fechaIngreso: "desc" } });
+  res.json(ingresos);
+}
+
+export async function crearIngreso(req, res) {
+  const pacienteId = Number(req.params.id);
+  const paciente = await prisma.paciente.findUnique({
+    where: { id: pacienteId },
+    select: { id: true, nombreCompleto: true, historiaClinica: true },
+  });
+  if (!paciente) return res.status(404).json({ error: "Paciente no encontrado" });
+
+  const errorValidacion = validarIngreso(req.body);
+  if (errorValidacion) return res.status(400).json({ error: errorValidacion });
+
+  const ingreso = await prisma.ingreso.create({
+    data: {
+      pacienteId,
+      fechaIngreso: new Date(req.body.fechaIngreso),
+      impresionClinicaIngreso: req.body.impresionClinicaIngreso || null,
+      serviciosSolicitados: req.body.serviciosSolicitados || null,
+      referidoDe: req.body.referidoDe || null,
+      referidoPor: req.body.referidoPor || null,
+    },
+  });
+  await registrarActividad(req.user.id, "crear_ingreso", `${paciente.nombreCompleto} (${paciente.historiaClinica})`);
+  res.status(201).json(ingreso);
 }

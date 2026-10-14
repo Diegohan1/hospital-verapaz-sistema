@@ -161,6 +161,7 @@ model Paciente {
   maternidad         RegistroMaternidad?
   egresoClinico      EgresoClinico?
   documentos         DocumentoPaciente[]
+  ingresos           Ingreso[]
   diagnosticos       Diagnostico[]
   tratamientos       TratamientoItem[]
   recetas            Receta[]
@@ -173,6 +174,30 @@ model Paciente {
   @@index([nombreCompleto])
   @@index([fechaIngreso])
   @@index([fechaEgreso])
+}
+
+// Modulo 1/2: cada admision de un paciente. Un mismo paciente (una sola
+// identidad con su nombre, DPI y demas datos demograficos) puede volver a
+// ingresar varias veces; cada ingreso guarda su propia fecha/hora y su
+// impresion clinica de admision, y agrupa los diagnosticos de esa admision.
+// Los campos Paciente.fechaIngreso / impresionClinicaIngreso se conservan
+// como el primer ingreso (compatibilidad); este registro es el que permite
+// ver el historial completo de ingresos de un paciente.
+model Ingreso {
+  id                      Int      @id @default(autoincrement())
+  pacienteId              Int
+  fechaIngreso            DateTime
+  impresionClinicaIngreso String?
+  serviciosSolicitados    String?
+  referidoDe              String?
+  referidoPor             String?
+  creadoEn                DateTime @default(now())
+
+  paciente     Paciente      @relation(fields: [pacienteId], references: [id])
+  diagnosticos Diagnostico[]
+
+  @@index([pacienteId])
+  @@index([fechaIngreso])
 }
 
 // Sprint 1: datos clinicos de egreso (RF-06/RF-08) separados de los datos
@@ -261,6 +286,7 @@ model RegistroMaternidad {
 model Diagnostico {
   id            Int      @id @default(autoincrement())
   pacienteId    Int
+  ingresoId     Int? // admision a la que pertenece este diagnostico (opcional por datos historicos)
   textoCifrado  String // RF-10: contenido cifrado (AES-256-GCM) — JSON con la plantilla estructurada
   iv            String
   authTag       String
@@ -272,9 +298,11 @@ model Diagnostico {
   creadoEn      DateTime @default(now())
 
   paciente    Paciente @relation(fields: [pacienteId], references: [id])
+  ingreso     Ingreso? @relation(fields: [ingresoId], references: [id])
   registrador Usuario  @relation("DiagnosticoRegistradoPor", fields: [registradoPor], references: [id])
 
   @@index([pacienteId])
+  @@index([ingresoId])
 }
 
 // Archivo adjunto a un estudio dentro de "Estudios y resultados" del

@@ -53,4 +53,13 @@ router.delete(
   documentos.eliminar
 );
 
+// Admisiones del paciente: historial de ingresos. Lectura para el personal
+// clinico y admision; escritura solo Recepcion/Administracion.
+router.get(
+  "/:id/ingresos",
+  requireRole(ROLES.ADMIN, ROLES.RECEPCION, ROLES.CONSULTA, ROLES.ENFERMERIA),
+  controller.listarIngresos
+);
+router.post("/:id/ingresos", requireRole(ROLES.RECEPCION, ROLES.ADMIN), controller.crearIngreso);
+
 export default router;

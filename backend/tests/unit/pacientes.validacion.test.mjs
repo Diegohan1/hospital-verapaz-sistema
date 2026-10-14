@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import "./_entorno.mjs";
-const { validarPaciente, validarMaternidad, tomarEgresoClinico, validarEgresoClinico, normalizarObjetosMultipart } = await import("../../src/controllers/pacientes.controller.js");
+const { validarPaciente, validarMaternidad, tomarEgresoClinico, validarEgresoClinico, normalizarObjetosMultipart, validarIngreso } = await import("../../src/controllers/pacientes.controller.js");
 
 const valido = {
   nombreCompleto: "Juan López", dpi: "3342235951601", historiaClinica: "123456",
@@ -119,4 +119,11 @@ test("autopsia y causa de muerte solo aplican a pacientes fallecidos", () => {
   assert.match(validarEgresoClinico({ causaMuerte: "x" }, undefined), /fallecimiento/);
   assert.equal(validarEgresoClinico({ diagnosticoEgreso: "A00" }, "vivo_mejorado"), null);
   assert.equal(validarEgresoClinico(null, "vivo_mejorado"), null);
+});
+
+test("nuevo ingreso: la fecha y hora de ingreso es obligatoria y válida", () => {
+  assert.equal(validarIngreso({ fechaIngreso: "2026-10-13T09:00:00.000Z" }), null);
+  assert.match(validarIngreso({}), /fecha de ingreso/);
+  assert.match(validarIngreso({ fechaIngreso: "" }), /fecha de ingreso/);
+  assert.match(validarIngreso({ fechaIngreso: "no-es-fecha" }), /fecha de ingreso/);
 });

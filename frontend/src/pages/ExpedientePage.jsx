@@ -213,7 +213,7 @@ export function ExpedientePage({ pacienteIdInicial }) {
   const [selectedId, setSelectedId] = useState(pacienteIdInicial || null);
   // Un solo paciente por id (no una lista completa): con volumen alto de
   // pacientes, cargar todos de una vez para un <select> deja de ser viable.
-  const { data: patient } = useFetch(selectedId ? `/pacientes/${selectedId}` : null, { enabled: !!selectedId });
+  const { data: patient, reload: recargarPaciente } = useFetch(selectedId ? `/pacientes/${selectedId}` : null, { enabled: !!selectedId });
 
   const [modalAbierto, setModalAbierto] = useState(false);
   const [tempToken, setTempToken] = useState("");
@@ -223,6 +223,25 @@ export function ExpedientePage({ pacienteIdInicial }) {
   const [mostrarHistorial, setMostrarHistorial] = useState(false);
   const [mensajeError, setMensajeError] = useState(null);
   const [sistemaActivo, setSistemaActivo] = useState("general");
+
+  // RF-10 detras de un boton: el formulario de diagnostico ya no esta
+  // siempre visible, para no llenar la pantalla del expediente.
+  const [mostrarFormulario, setMostrarFormulario] = useState(false);
+  // Cada admision (ingreso) del paciente agrupa sus propios diagnosticos.
+  const [ingresoId, setIngresoId] = useState("");
+  const [mostrarNuevoIngreso, setMostrarNuevoIngreso] = useState(false);
+  const [guardandoIngreso, setGuardandoIngreso] = useState(false);
+  const [mensajeIngreso, setMensajeIngreso] = useState(null);
+  const [ingresoForm, setIngresoForm] = useState({ fecha: ahoraFecha(), hora: ahoraHora(), impresionClinicaIngreso: "", serviciosSolicitados: "", referidoPor: "" });
+
+  const ingresos = patient?.ingresos || [];
+
+  // Al cambiar de paciente, el diagnostico nuevo se asocia por defecto al
+  // ingreso mas reciente.
+  useEffect(() => {
+    setIngresoId(ingresos[0] ? String(ingresos[0].id) : "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patient?.id, patient?.ingresos?.length]);
 
   const [tipoAtencion, setTipoAtencion] = useState("");
   const [servicio, setServicio] = useState("");
@@ -342,6 +361,7 @@ export function ExpedientePage({ pacienteIdInicial }) {
       formData.append("tipoAtencion", tipoAtencion);
       formData.append("servicio", servicio);
       formData.append("salaCama", salaCama);
+      if (ingresoId) formData.append("ingresoId", ingresoId);
       archivosEstudios.forEach((file, i) => { if (file) formData.append(`estudio_${i}`, file); });
 
       await api.post(`/expedientes/paciente/${selectedId}`, formData, { headers: headersToken() });
@@ -359,6 +379,32 @@ export function ExpedientePage({ pacienteIdInicial }) {
     }
   }
 
+  // "Nuevo ingreso": el paciente (identidad, demograficos, historia clinica)
+  // ya existe y no cambia; solo se registra una nueva admision con su fecha,
+  // hora e impresion clinica de ingreso.
+  async function guardarIngreso(e) {
+    e.preventDefault();
+    setGuardandoIngreso(true);
+    setMensajeIngreso(null);
+    try {
+      const fechaIngreso = new Date(`${ingresoForm.fecha}T${ingresoForm.hora || "00:00"}`).toISOString();
+      await api.post(`/pacientes/${selectedId}/ingresos`, {
+        fechaIngreso,
+        impresionClinicaIngreso: ingresoForm.impresionClinicaIngreso,
+        serviciosSolicitados: ingresoForm.serviciosSolicitados,
+        referidoPor: ingresoForm.referidoPor,
+      });
+      setMensajeIngreso({ tone: "success", texto: "Ingreso registrado correctamente." });
+      setIngresoForm({ fecha: ahoraFecha(), hora: ahoraHora(), impresionClinicaIngreso: "", serviciosSolicitados: "", referidoPor: "" });
+      setMostrarNuevoIngreso(false);
+      recargarPaciente();
+    } catch (err) {
+      setMensajeIngreso({ tone: "error", texto: err.message });
+    } finally {
+      setGuardandoIngreso(false);
+    }
+  }
+
   const imc = calcularIMC(datos.signosVitales.peso, datos.signosVitales.talla);
 
   function seleccionarPaciente(p) {
@@ -368,6 +414,9 @@ export function ExpedientePage({ pacienteIdInicial }) {
     setTempToken("");
     setTokenInfo(null);
     setMostrarHistorial(false);
+    setMostrarFormulario(false);
+    setMostrarNuevoIngreso(false);
+    setMensajeIngreso(null);
   }
 
   return (
@@ -383,6 +432,68 @@ export function ExpedientePage({ pacienteIdInicial }) {
           <div className="text-sm" style={{ color: "#666" }}>
             {patient.nombreCompleto} · {patient.historiaClinica} · {patient.edad ?? "—"} años · {patient.sexo ?? "—"} · Sangre: {patient.tipoSangre ?? "—"}
           </div>
+        </Card>
+      )}
+
+      {patient && (
+        <Card style={{ marginBottom: 16 }}>
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <div className="font-semibold text-sm">Historial de ingresos</div>
+            {(esAdmin || tempToken) && (
+              <Button variant="secondary" onClick={() => setMostrarNuevoIngreso((v) => !v)}>
+                <span className="flex items-center gap-1.5"><Plus size={14} /> Nuevo ingreso</span>
+              </Button>
+            )}
+          </div>
+
+          {ingresos.length > 0 ? (
+            <div className="flex flex-col gap-2">
+              {ingresos.map((ing, i) => {
+                const diagIngreso = diagnostico?.ingresos?.find((x) => x.id === ing.id);
+                return (
+                  <div key={ing.id} className="rounded-xl p-3 text-sm" style={{ border: `1px solid ${COLORS.border}` }}>
+                    <div className="font-medium flex items-center gap-2">
+                      {new Date(ing.fechaIngreso).toLocaleString()}
+                      {i === 0 && <span className="text-xs" style={{ color: COLORS.green }}>· Ingreso más reciente</span>}
+                    </div>
+                    {ing.serviciosSolicitados && <div className="text-xs mt-1" style={{ color: "#666" }}>Servicios solicitados: {ing.serviciosSolicitados}</div>}
+                    {ing.referidoPor && <div className="text-xs" style={{ color: "#666" }}>Referido por: {ing.referidoPor}</div>}
+                    {ing.impresionClinicaIngreso && <div className="text-xs mt-1 whitespace-pre-wrap" style={{ color: "#666" }}>Impresión clínica de ingreso: {ing.impresionClinicaIngreso}</div>}
+                    {diagIngreso && (
+                      <div className="text-xs mt-1" style={{ color: "#666" }}>
+                        Diagnósticos registrados en este ingreso: {diagIngreso.diagnosticos.length}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-sm" style={{ color: "#888" }}>No hay ingresos registrados para este paciente.</p>
+          )}
+
+          {mostrarNuevoIngreso && (
+            <form onSubmit={guardarIngreso} className="flex flex-col gap-4 mt-4 pt-4" style={{ borderTop: `1px solid ${COLORS.border}` }}>
+              {mensajeIngreso && <Banner tone={mensajeIngreso.tone}>{mensajeIngreso.texto}</Banner>}
+              <p className="text-xs" style={{ color: "#888" }}>
+                Paciente: <strong style={{ color: COLORS.text }}>{patient.nombreCompleto}</strong> · Historia clínica: <strong style={{ color: COLORS.text }}>{patient.historiaClinica}</strong> · DPI: {patient.dpi || "—"} · {patient.edad ?? "—"} años · {patient.sexo ?? "—"}.
+                Los datos demográficos y la historia clínica no cambian entre ingresos; solo se registra la nueva admisión.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <FormField label="Fecha de ingreso"><TextInput type="date" required value={ingresoForm.fecha} onChange={(e) => setIngresoForm((f) => ({ ...f, fecha: e.target.value }))} /></FormField>
+                <FormField label="Hora de ingreso"><TextInput type="time" value={ingresoForm.hora} onChange={(e) => setIngresoForm((f) => ({ ...f, hora: e.target.value }))} /></FormField>
+              </div>
+              <FormField label="Impresión clínica de ingreso"><TextArea rows={3} value={ingresoForm.impresionClinicaIngreso} onChange={(e) => setIngresoForm((f) => ({ ...f, impresionClinicaIngreso: e.target.value }))} /></FormField>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <FormField label="Servicios solicitados"><TextInput value={ingresoForm.serviciosSolicitados} onChange={(e) => setIngresoForm((f) => ({ ...f, serviciosSolicitados: e.target.value }))} /></FormField>
+                <FormField label="Referido por"><TextInput value={ingresoForm.referidoPor} onChange={(e) => setIngresoForm((f) => ({ ...f, referidoPor: e.target.value }))} /></FormField>
+              </div>
+              <div className="flex gap-2">
+                <Button type="submit" disabled={guardandoIngreso}>{guardandoIngreso ? "Guardando…" : "Guardar ingreso"}</Button>
+                <Button type="button" variant="secondary" onClick={() => { setMostrarNuevoIngreso(false); setMensajeIngreso(null); }}>Cancelar</Button>
+              </div>
+            </form>
+          )}
         </Card>
       )}
 
@@ -458,6 +569,14 @@ export function ExpedientePage({ pacienteIdInicial }) {
       </Modal>
 
       {selectedId && (esAdmin || tempToken) && (
+        <div className="mb-4">
+          <Button variant={mostrarFormulario ? "secondary" : "primary"} onClick={() => setMostrarFormulario((v) => !v)}>
+            {mostrarFormulario ? "Ocultar formulario de diagnóstico" : "Registrar diagnóstico"}
+          </Button>
+        </div>
+      )}
+
+      {selectedId && (esAdmin || tempToken) && mostrarFormulario && (
         <Card>
           <div className="font-semibold text-sm mb-1">Registrar diagnóstico (RF-10)</div>
           <p className="text-xs mb-4" style={{ color: "#888" }}>
@@ -482,6 +601,12 @@ export function ExpedientePage({ pacienteIdInicial }) {
                 {requiereSalaCama && (
                   <FormField label="Sala / Cama"><TextInput value={salaCama} onChange={(e) => setSalaCama(e.target.value)} /></FormField>
                 )}
+                <FormField label="Ingreso al que pertenece">
+                  <Select value={ingresoId} onChange={(e) => setIngresoId(e.target.value)}>
+                    <option value="">Sin ingreso (no especificado)</option>
+                    {ingresos.map((i) => <option key={i.id} value={i.id}>{new Date(i.fechaIngreso).toLocaleString()}</option>)}
+                  </Select>
+                </FormField>
               </div>
             </div>
 
