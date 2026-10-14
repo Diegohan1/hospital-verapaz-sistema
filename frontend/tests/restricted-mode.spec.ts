@@ -34,7 +34,6 @@ test.describe('Modo Restringido (Logo del Hospital)', () => {
     // Verificar que módulos permitidos siguen visibles
     await expect(page.locator('nav').getByText('Registro y Admisión', { exact: true })).toBeVisible();
     await expect(page.locator('nav').getByText('Expediente Clínico', { exact: true })).toBeVisible();
-    await expect(page.locator('nav').getByText('Bitácora de Visitas', { exact: true })).toBeVisible();
     
     // Verificar rotación del logo
     const logoImg = page.locator('img[alt="Hospital Verapaz"]').first();

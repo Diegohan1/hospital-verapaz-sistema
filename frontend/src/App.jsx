@@ -13,7 +13,6 @@ import { ReferidosPage } from "./pages/ReferidosPage";
 import { FinancieraPage } from "./pages/FinancieraPage";
 import { GastosPage } from "./pages/GastosPage";
 import { FarmaciaPage } from "./pages/FarmaciaPage";
-import { BitacoraPage } from "./pages/BitacoraPage";
 import { SeguridadPage } from "./pages/SeguridadPage";
 import { ReportesPage } from "./pages/ReportesPage";
 import { EscaneoMovilPage } from "./pages/EscaneoMovilPage";
@@ -69,7 +68,6 @@ export default function App() {
         <Route path="/financiera" element={<FinancieraPage />} />
         <Route path="/gastos" element={<GastosPage />} />
         <Route path="/farmacia" element={<FarmaciaPage />} />
-        <Route path="/bitacora" element={<ConPacienteDeUrl Page={BitacoraPage} />} />
         <Route path="/seguridad" element={<SeguridadPage />} />
         <Route path="/reportes" element={<ReportesPage />} />
         <Route path="*" element={<Navigate to="/registro" replace />} />

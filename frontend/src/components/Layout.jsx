@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
   ClipboardList, FileText, FolderOpen, Syringe, Users, Wallet, Receipt, Pill,
-  ClipboardCheck, ShieldCheck, BarChart3, LogOut, Menu, X,
+  ShieldCheck, BarChart3, LogOut, Menu, X,
 } from "lucide-react";
 import { COLORS } from "../styles/tokens";
 import { etiquetasRoles } from "../utils/roles";
@@ -17,7 +17,6 @@ const NAV_ITEMS = [
   { key: "financiera", label: "Área Financiera", Icon: Wallet, allowedInRestricted: false },
   { key: "gastos", label: "Gastos del Hospital", Icon: Receipt, allowedInRestricted: false },
   { key: "farmacia", label: "Farmacia", Icon: Pill, allowedInRestricted: false },
-  { key: "bitacora", label: "Bitácora de Visitas", Icon: ClipboardCheck, allowedInRestricted: true },
   { key: "seguridad", label: "Seguridad y Roles", Icon: ShieldCheck, allowedInRestricted: false },
   { key: "reportes", label: "Reportes", Icon: BarChart3, allowedInRestricted: false },
 ];
@@ -45,7 +44,7 @@ function SidebarContent({ usuario, onLogout, onNavigate, restrictedMode, onToggl
         <button
           onClick={onToggleRestrictedMode}
           className="flex items-center gap-2.5 w-full"
-          aria-label={restrictedMode ? "Mostrar todos los módulos" : "Ocultar módulos (solo Registro, Expediente, Bitácora)"}
+          aria-label={restrictedMode ? "Mostrar todos los módulos" : "Ocultar módulos (solo Registro y Expediente)"}
           style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}
         >
           <img src={logoVerapaz} alt="Hospital Verapaz" className="w-7 h-7 rounded-full shrink-0 transition-transform duration-200" style={{ transform: restrictedMode ? "rotate(180deg)" : "none" }} />
@@ -160,7 +159,7 @@ export function Layout({ usuario, onLogout, children }) {
           </button>
           <button
             onClick={toggleRestrictedMode}
-            aria-label={restrictedMode ? "Mostrar todos los módulos" : "Ocultar módulos (solo Registro, Expediente, Bitácora)"}
+            aria-label={restrictedMode ? "Mostrar todos los módulos" : "Ocultar módulos (solo Registro y Expediente)"}
             style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}
           >
             <img src={logoVerapaz} alt="Hospital Verapaz" className="w-6 h-6 rounded-full transition-transform duration-200" style={{ transform: restrictedMode ? "rotate(180deg)" : "none" }} />
