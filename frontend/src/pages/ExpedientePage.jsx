@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { ShieldAlert, KeyRound, Plus, Trash2, History, EyeOff } from "lucide-react";
+import { ShieldAlert, KeyRound, Plus, Trash2, History, EyeOff, FileText, X } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
@@ -180,6 +180,34 @@ function DiagnosticoDetalle({ d }) {
               </ol>
             </div>
           )}
+          {(d.datos?.archivoDiagnostico?.archivoDataUrl || (d.datos?.adjuntosAdicionales || []).some((a) => a.archivoDataUrl)) && (
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: "#888" }}>Archivos adjuntos</div>
+              <div className="flex flex-col gap-1 text-sm">
+                {d.datos?.archivoDiagnostico?.archivoDataUrl && (
+                  <button
+                    type="button"
+                    onClick={() => abrirArchivoDataUrl(d.datos.archivoDiagnostico.archivoDataUrl)}
+                    className="text-left font-semibold"
+                    style={{ color: COLORS.navy }}
+                  >
+                    Ver archivo del diagnóstico{d.datos.archivoDiagnostico.archivoNombre ? ` (${d.datos.archivoDiagnostico.archivoNombre})` : ""}
+                  </button>
+                )}
+                {(d.datos?.adjuntosAdicionales || []).map((a, i) => a.archivoDataUrl && (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => abrirArchivoDataUrl(a.archivoDataUrl)}
+                    className="text-left font-semibold"
+                    style={{ color: COLORS.navy }}
+                  >
+                    Ver archivo adicional{a.archivoNombre ? ` (${a.archivoNombre})` : ""}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           {d.datos?.impresionClinica && (
             <div>
               <div className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: "#888" }}>Impresión clínica</div>
@@ -257,6 +285,8 @@ export function ExpedientePage({ pacienteIdInicial }) {
   }
   const [datos, setDatos] = useState(datosVacios());
   const [archivosEstudios, setArchivosEstudios] = useState([]); // File[] paralelo a datos.estudios, no viaja en el JSON
+  const [archivoDiagnostico, setArchivoDiagnostico] = useState(null); // File general del diagnostico (opcional)
+  const [archivosAdicionales, setArchivosAdicionales] = useState([]); // File[] adjuntos sueltos del diagnostico
   const [guardando, setGuardando] = useState(false);
   const [mensajeGuardado, setMensajeGuardado] = useState(null);
 
@@ -363,11 +393,15 @@ export function ExpedientePage({ pacienteIdInicial }) {
       formData.append("salaCama", salaCama);
       if (ingresoId) formData.append("ingresoId", ingresoId);
       archivosEstudios.forEach((file, i) => { if (file) formData.append(`estudio_${i}`, file); });
+      if (archivoDiagnostico) formData.append("diagnostico_adjunto", archivoDiagnostico);
+      archivosAdicionales.forEach((file, i) => formData.append(`adjunto_extra_${i}`, file));
 
       await api.post(`/expedientes/paciente/${selectedId}`, formData, { headers: headersToken() });
       setMensajeGuardado({ tone: "success", texto: "Diagnóstico registrado correctamente." });
       setDatos(datosVacios());
       setArchivosEstudios([]);
+      setArchivoDiagnostico(null);
+      setArchivosAdicionales([]);
       setSistemaActivo("general");
       setEstado("idle");
       setDiagnostico(null);
@@ -704,6 +738,39 @@ export function ExpedientePage({ pacienteIdInicial }) {
               <Button type="button" variant="secondary" onClick={agregarEstudio}>
                 <span className="flex items-center gap-1.5"><Plus size={14} /> Agregar estudio</span>
               </Button>
+
+              <div className="mt-4">
+                <FormField label="Adjuntar archivos (PDF/imagen, máx. 5MB — opcional)">
+                  <input
+                    type="file"
+                    multiple
+                    accept=".pdf,image/*"
+                    onChange={(ev) => {
+                      const elegidos = Array.from(ev.target.files || []);
+                      setArchivosAdicionales((a) => [...a, ...elegidos]);
+                      ev.target.value = "";
+                    }}
+                    className="text-sm mt-1.5"
+                  />
+                </FormField>
+                {archivosAdicionales.length > 0 && (
+                  <ul className="flex flex-col gap-1 mt-2">
+                    {archivosAdicionales.map((f, i) => (
+                      <li key={i} className="flex items-center gap-2 text-xs" style={{ color: "#555" }}>
+                        <FileText size={13} /> {f.name}
+                        <button
+                          type="button"
+                          onClick={() => setArchivosAdicionales((a) => a.filter((_, idx) => idx !== i))}
+                          className="text-gray-400 hover:text-red-500"
+                          aria-label="Quitar archivo"
+                        >
+                          <X size={13} />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             </div>
 
             <div>
@@ -751,6 +818,30 @@ export function ExpedientePage({ pacienteIdInicial }) {
               <Button type="button" variant="secondary" onClick={agregarSecundario}>
                 <span className="flex items-center gap-1.5"><Plus size={14} /> Agregar diagnóstico</span>
               </Button>
+
+              <div className="mt-4">
+                <FormField label="Adjuntar archivo del diagnóstico (PDF/imagen, máx. 5MB — opcional)">
+                  <input
+                    type="file"
+                    accept=".pdf,image/*"
+                    onChange={(ev) => setArchivoDiagnostico(ev.target.files?.[0] || null)}
+                    className="text-sm mt-1.5"
+                  />
+                </FormField>
+                {archivoDiagnostico && (
+                  <p className="flex items-center gap-2 text-xs mt-1.5" style={{ color: "#555" }}>
+                    <FileText size={13} /> {archivoDiagnostico.name}
+                    <button
+                      type="button"
+                      onClick={() => setArchivoDiagnostico(null)}
+                      className="text-gray-400 hover:text-red-500"
+                      aria-label="Quitar archivo"
+                    >
+                      <X size={13} />
+                    </button>
+                  </p>
+                )}
+              </div>
             </div>
 
             <div>

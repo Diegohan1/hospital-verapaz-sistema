@@ -50,20 +50,24 @@ export async function listar(req, res) {
 // volumen (descifrado en memoria), para que el frontend lo pueda mostrar o
 // descargar sin un endpoint aparte — todo llega en la misma respuesta ya
 // protegida por el token.
-async function inlineArchivosEstudios(datos, pacienteId) {
-  if (!datos?.estudios?.length) return;
-  for (const estudio of datos.estudios) {
-    if (!estudio.archivoId) continue;
-    const archivo = await prisma.diagnosticoArchivo.findUnique({ where: { id: estudio.archivoId } });
-    if (!archivo || archivo.pacienteId !== pacienteId) continue;
-    try {
-      const buffer = leerArchivoCifrado(path.join(UPLOAD_DIR, archivo.nombreArchivo), KEY);
-      estudio.archivoDataUrl = `data:${archivo.mimeType};base64,${buffer.toString("base64")}`;
-      estudio.archivoNombre = archivo.nombreOriginal;
-    } catch {
-      estudio.archivoDataUrl = null;
-    }
+async function inlineUnArchivo(ref, pacienteId) {
+  if (!ref?.archivoId) return;
+  const archivo = await prisma.diagnosticoArchivo.findUnique({ where: { id: ref.archivoId } });
+  if (!archivo || archivo.pacienteId !== pacienteId) return;
+  try {
+    const buffer = leerArchivoCifrado(path.join(UPLOAD_DIR, archivo.nombreArchivo), KEY);
+    ref.archivoDataUrl = `data:${archivo.mimeType};base64,${buffer.toString("base64")}`;
+    ref.archivoNombre = archivo.nombreOriginal;
+  } catch {
+    ref.archivoDataUrl = null;
   }
+}
+
+async function inlineArchivosEstudios(datos, pacienteId) {
+  if (!datos) return;
+  for (const estudio of datos.estudios || []) await inlineUnArchivo(estudio, pacienteId);
+  await inlineUnArchivo(datos.archivoDiagnostico, pacienteId);
+  for (const adjunto of datos.adjuntosAdicionales || []) await inlineUnArchivo(adjunto, pacienteId);
 }
 
 async function descifrarDiagnostico(diagnostico) {
@@ -143,9 +147,10 @@ export async function obtenerUno(req, res) {
 }
 
 // RF-10: registrar el diagnostico, cifrado antes de guardarse. La peticion
-// llega como multipart/form-data: "datos" es el JSON serializado y cada
-// archivo adjunto usa el campo "estudio_<indice>" para saber a que fila de
-// datos.estudios pertenece.
+// llega como multipart/form-data: "datos" es el JSON serializado. Cada
+// archivo adjunto de un estudio usa el campo "estudio_<indice>"; el archivo
+// general del diagnostico usa "diagnostico_adjunto" y los archivos
+// adicionales "adjunto_extra_<i>".
 export async function crear(req, res) {
   const pacienteId = Number(req.params.id ?? req.body.pacienteId);
   let datos;
@@ -177,23 +182,32 @@ export async function crear(req, res) {
     if (error) return res.status(422).json({ error });
   }
 
+  // Los adjuntos del diagnostico: cada estudio puede tener su propio archivo
+  // (estudio_<indice>), y ademas hay un archivo general del diagnostico
+  // (diagnostico_adjunto) y archivos adicionales sueltos (adjunto_extra_<i>).
+  // Todos se cifran antes de tocar disco; en la base solo queda el metadato.
+  datos.adjuntosAdicionales = [];
   for (const file of req.files || []) {
-    const match = file.fieldname.match(/^estudio_(\d+)$/);
-    const indice = match ? Number(match[1]) : null;
-    if (indice == null || !datos.estudios?.[indice]) continue;
-    // Cifrar y persistir el sobre; guardar solo metadatos en la base
+    const matchEstudio = file.fieldname.match(/^estudio_(\d+)$/);
+    if (matchEstudio) {
+      const indice = Number(matchEstudio[1]);
+      if (!datos.estudios?.[indice]) continue;
+      const nombreArchivo = guardarArchivoCifrado(file.buffer, UPLOAD_DIR, KEY);
+      const archivo = await prisma.diagnosticoArchivo.create({
+        data: { pacienteId, nombreOriginal: file.originalname, nombreArchivo, mimeType: file.mimetype, tamano: file.size },
+      });
+      datos.estudios[indice].archivoId = archivo.id;
+      datos.estudios[indice].archivoNombre = file.originalname;
+      continue;
+    }
+    if (file.fieldname !== "diagnostico_adjunto" && !/^adjunto_extra_\d+$/.test(file.fieldname)) continue;
     const nombreArchivo = guardarArchivoCifrado(file.buffer, UPLOAD_DIR, KEY);
     const archivo = await prisma.diagnosticoArchivo.create({
-      data: {
-        pacienteId,
-        nombreOriginal: file.originalname,
-        nombreArchivo,
-        mimeType: file.mimetype,
-        tamano: file.size,
-      },
+      data: { pacienteId, nombreOriginal: file.originalname, nombreArchivo, mimeType: file.mimetype, tamano: file.size },
     });
-    datos.estudios[indice].archivoId = archivo.id;
-    datos.estudios[indice].archivoNombre = file.originalname;
+    const ref = { archivoId: archivo.id, archivoNombre: file.originalname };
+    if (file.fieldname === "diagnostico_adjunto") datos.archivoDiagnostico = ref;
+    else datos.adjuntosAdicionales.push(ref);
   }
 
   const { encrypted, iv, authTag } = encrypt(JSON.stringify(datos), KEY);
