@@ -47,7 +47,7 @@ function SidebarContent({ usuario, onLogout, onNavigate, restrictedMode, onToggl
           aria-label={restrictedMode ? "Mostrar todos los módulos" : "Ocultar módulos (solo Registro y Expediente)"}
           style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}
         >
-          <img src={logoVerapaz} alt="Hospital Verapaz" className="w-7 h-7 rounded-full shrink-0 transition-transform duration-200" style={{ transform: restrictedMode ? "rotate(180deg)" : "none" }} />
+          <img src={logoVerapaz} alt="Hospital Verapaz" className="w-7 h-7 rounded-full shrink-0 transition-transform duration-200" style={{ transform: restrictedMode ? "rotate(180deg)" : "rotate(360deg)" }} />
           <div className="text-white font-bold text-sm tracking-wide flex-1 text-left">
             HOSPITAL VERAPAZ
             {restrictedMode && (
@@ -162,7 +162,7 @@ export function Layout({ usuario, onLogout, children }) {
             aria-label={restrictedMode ? "Mostrar todos los módulos" : "Ocultar módulos (solo Registro y Expediente)"}
             style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}
           >
-            <img src={logoVerapaz} alt="Hospital Verapaz" className="w-6 h-6 rounded-full transition-transform duration-200" style={{ transform: restrictedMode ? "rotate(180deg)" : "none" }} />
+            <img src={logoVerapaz} alt="Hospital Verapaz" className="w-6 h-6 rounded-full transition-transform duration-200" style={{ transform: restrictedMode ? "rotate(180deg)" : "rotate(360deg)" }} />
           </button>
           <div className="text-sm font-bold" style={{ color: COLORS.navy }}>
             HOSPITAL VERAPAZ
