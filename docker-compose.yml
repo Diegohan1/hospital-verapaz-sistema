@@ -8,6 +8,9 @@
 services:
   db:
     image: postgres:16-alpine
+    # Solo permite conexiones desde esta máquina para ejecutar el backend fuera de Docker.
+    ports:
+      - "127.0.0.1:5433:5432"
     environment:
       POSTGRES_USER: verapaz
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Configure POSTGRES_PASSWORD en .env}

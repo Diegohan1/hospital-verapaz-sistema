@@ -11,7 +11,7 @@ import { renderizarPrimeraPaginaPdf } from "../utils/pdfDocumentos";
 const POLL_MS = 2500;
 
 // Dev-Mari: para computadoras sin camara — muestra un QR que abre la pagina
-// de escaneo en el navegador del telefono (misma red WiFi). El telefono
+// de escaneo en el navegador del telefono (misma red o por internet via ngrok). El telefono
 // genera el PDF con su propia camara y lo sube a una sesion efimera; esta
 // pantalla consulta cada POLL_MS si ya llego, y cuando llega corre el mismo
 // OCR de datos basicos y entrega el resultado con la misma forma que
@@ -115,7 +115,7 @@ export function EscaneoQRModal({ open, onClose, onConfirmar }) {
             <div className="flex flex-col items-center gap-3 py-2">
               <img src={qrDataUrl} alt="Código QR para escanear con el teléfono" width={220} height={220} />
               <p className="text-sm text-center" style={{ color: "#666" }}>
-                Abra la cámara del teléfono y apunte a este código — debe estar conectado a la misma red WiFi.
+                Escanee el código con el teléfono. Con ngrok, puede estar conectado a otra red Wi-Fi; necesita internet.
               </p>
               <a href={urlSesion} className="text-xs break-all" style={{ color: COLORS.navy }}>{urlSesion}</a>
               {estado === "recibiendo" ? (

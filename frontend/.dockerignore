@@ -1,0 +1,9 @@
+node_modules
+dist
+.cert
+.env
+.env.*
+playwright-report
+test-results
+coverage
+npm-debug.log*

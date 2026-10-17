@@ -80,6 +80,27 @@ npm install
 npm run dev                # http://localhost:5173
 ```
 
+## Escaneo móvil desde otra red con ngrok
+
+El QR usa el origen con el que se abrió el sistema. Para que el teléfono pueda
+abrirlo desde cualquier Wi-Fi, ngrok debe publicar el frontend y la computadora
+debe abrir el sistema usando la URL HTTPS que ngrok entrega (no `localhost`).
+Configura el authtoken de tu cuenta una sola vez con `ngrok config add-authtoken <TOKEN>`
+y mantenlo privado; no lo compartas por chat ni lo subas al repositorio.
+
+```bash
+# Si usas Docker Compose:
+ngrok http 8080
+
+# Si ejecutas el backend y Vite localmente en terminales separadas:
+ngrok http 5173
+```
+
+Abre en la computadora la URL HTTPS de ngrok y desde ahí genera el QR. El móvil
+puede usar otra red siempre que tenga internet. El túnel HTTPS también habilita
+el acceso a la cámara del teléfono. No publiques directamente el puerto 4000;
+Vite (o Nginx en Docker) ya enruta `/api` al backend.
+
 ## Cómo ejecutar las pruebas E2E (Playwright)
 
 ### Opción A: Con Docker (recomendado para CI/CD)

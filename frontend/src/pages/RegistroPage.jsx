@@ -740,7 +740,7 @@ function ListaAdjuntos({ archivos, onChange, titulo = "Adjuntar archivos (result
           {!documentoPendiente ? (
             <div className="flex gap-2 flex-wrap">
               <Button onClick={() => setEscanerAbierto(true)}>
-                <span className="flex items-center gap-1.5"><Camera size={15} /> Escanear en esta computadora</span>
+                <span className="flex items-center gap-1.5"><Camera size={15} /> Escanear desde este dispositivo</span>
               </Button>
               <Button variant="secondary" onClick={() => setEscaneoQRAbierto(true)}>
                 <span className="flex items-center gap-1.5"><Smartphone size={15} /> Escanear con el teléfono</span>
