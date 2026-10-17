@@ -30,7 +30,7 @@ function iniciales(nombre) {
     .join("");
 }
 
-function SidebarContent({ usuario, onLogout, onNavigate, restrictedMode, onToggleRestrictedMode }) {
+function SidebarContent({ usuario, onLogout, onNavigate, restrictedMode, onToggleRestrictedMode, giroLogo }) {
   const location = useLocation();
   
   // Filtrar items según el modo restringido
@@ -47,7 +47,7 @@ function SidebarContent({ usuario, onLogout, onNavigate, restrictedMode, onToggl
           aria-label={restrictedMode ? "Mostrar todos los módulos" : "Ocultar módulos (solo Registro y Expediente)"}
           style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}
         >
-          <img src={logoVerapaz} alt="Hospital Verapaz" className="w-7 h-7 rounded-full shrink-0 transition-transform duration-200" style={{ transform: restrictedMode ? "rotate(180deg)" : "rotate(360deg)" }} />
+          <img key={giroLogo} src={logoVerapaz} alt="Hospital Verapaz" className={"w-7 h-7 rounded-full shrink-0" + (giroLogo ? " animate-giro-total" : "")} />
           <div className="text-white font-bold text-sm tracking-wide flex-1 text-left">
             HOSPITAL VERAPAZ
             {restrictedMode && (
@@ -108,9 +108,13 @@ function SidebarContent({ usuario, onLogout, onNavigate, restrictedMode, onToggl
 export function Layout({ usuario, onLogout, children }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [restrictedMode, setRestrictedMode] = useState(false);
+  // Se incrementa en cada clic: cambia la key del logo para reiniciar la
+  // animacion de "giro total" (360 grados).
+  const [giroLogo, setGiroLogo] = useState(0);
 
   const toggleRestrictedMode = () => {
     setRestrictedMode(prev => !prev);
+    setGiroLogo(n => n + 1);
   };
 
   return (
@@ -125,6 +129,7 @@ export function Layout({ usuario, onLogout, children }) {
           onLogout={onLogout} 
           restrictedMode={restrictedMode}
           onToggleRestrictedMode={toggleRestrictedMode}
+          giroLogo={giroLogo}
         />
       </div>
 
@@ -146,6 +151,7 @@ export function Layout({ usuario, onLogout, children }) {
               onNavigate={() => setMobileOpen(false)}
               restrictedMode={restrictedMode}
               onToggleRestrictedMode={toggleRestrictedMode}
+              giroLogo={giroLogo}
             />
           </div>
         </div>
@@ -162,7 +168,7 @@ export function Layout({ usuario, onLogout, children }) {
             aria-label={restrictedMode ? "Mostrar todos los módulos" : "Ocultar módulos (solo Registro y Expediente)"}
             style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}
           >
-            <img src={logoVerapaz} alt="Hospital Verapaz" className="w-6 h-6 rounded-full transition-transform duration-200" style={{ transform: restrictedMode ? "rotate(180deg)" : "rotate(360deg)" }} />
+            <img key={giroLogo} src={logoVerapaz} alt="Hospital Verapaz" className={"w-6 h-6 rounded-full" + (giroLogo ? " animate-giro-total" : "")} />
           </button>
           <div className="text-sm font-bold" style={{ color: COLORS.navy }}>
             HOSPITAL VERAPAZ

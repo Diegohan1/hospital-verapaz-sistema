@@ -86,6 +86,17 @@ body {
   animation: heartbeat 2.4s ease-in-out infinite;
 }
 
+/* El logo del hospital da un giro completo (360) al hacer clic para activar
+   o desactivar el modo restringido. Se remonta la imagen (key) para reiniciar
+   la animacion en cada clic. */
+@keyframes giro-total {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.animate-giro-total {
+  animation: giro-total 0.7s ease-in-out;
+}
+
 /* Impresion de facturas/recetas: el Modal (ver components/Modal.jsx) se monta
    con un portal directo a <body>, fuera de #root, para que aqui baste con
    ocultar #root completo. Antes se usaba el truco de "visibility:hidden en
