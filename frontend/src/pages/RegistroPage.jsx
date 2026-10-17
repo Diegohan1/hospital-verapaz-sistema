@@ -501,6 +501,29 @@ export function RegistroPage({ onVerExpediente }) {
     }
   }
 
+  // Abre la pestaña "Ingreso / Egreso" con el paciente ya cargado: ahi estan
+  // todos los campos editables de su ficha (identidad, ingreso, egreso y
+  // maternidad) sobre el mismo formulario que ya actualiza por PUT.
+  function editarPaciente(p) {
+    setIngresoPacienteId(p.id);
+    setTab("ingreso");
+  }
+
+  async function eliminarPaciente(p) {
+    const confirmacion = window.confirm(
+      `¿Eliminar definitivamente a ${p.nombreCompleto} (HC ${p.historiaClinica})?\n\n` +
+      "Se borrarán su expediente, diagnósticos, documentos, tratamientos y facturas. Esta acción no se puede deshacer."
+    );
+    if (!confirmacion) return;
+    try {
+      await api.del(`/pacientes/${p.id}`);
+      if (ingresoPacienteId === p.id) setIngresoPacienteId(null);
+      pacientesLista.reload();
+    } catch (err) {
+      window.alert(`No se pudo eliminar el paciente: ${err.message}`);
+    }
+  }
+
   const [form, setForm] = useState(CAMPOS_VACIOS);
   const [guardando, setGuardando] = useState(false);
   const [mensaje, setMensaje] = useState(null);
@@ -1075,9 +1098,21 @@ function ListaAdjuntos({ archivos, onChange, titulo = "Adjuntar archivos (result
                   )}
                 </td>
                 <td className="px-4 py-3">
-                  <button className="text-xs font-semibold" style={{ color: COLORS.navy }} onClick={() => onVerExpediente(p.id)}>
-                    Ver expediente →
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <button className="text-xs font-semibold" style={{ color: COLORS.navy }} onClick={() => onVerExpediente(p.id)}>
+                      Ver expediente →
+                    </button>
+                    {puedeRegistrar && (
+                      <>
+                        <button className="text-xs font-semibold" style={{ color: COLORS.navy }} onClick={() => editarPaciente(p)}>
+                          Editar
+                        </button>
+                        <button className="text-xs font-semibold" style={{ color: COLORS.red }} onClick={() => eliminarPaciente(p)}>
+                          Eliminar
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </td>
               </>
             )}

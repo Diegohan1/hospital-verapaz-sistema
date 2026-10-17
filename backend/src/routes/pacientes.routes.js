@@ -24,6 +24,7 @@ router.get("/:id", controller.obtenerUno);
 // (registro manual, sin escaneo), multer no hace nada y sigue de largo.
 router.post("/", requireRole(ROLES.RECEPCION, ROLES.ADMIN), documentos.uploadDocumento, controller.crear);
 router.put("/:id", requireRole(ROLES.RECEPCION, ROLES.ADMIN), controller.actualizar);
+router.delete("/:id", requireRole(ROLES.RECEPCION, ROLES.ADMIN), controller.eliminar);
 
 // Cambios2 Sprint 5 + fusion con Anexos (23/09/2026): documentos generales
 // del paciente ya registrado (identificaciones, referencias, constancias,

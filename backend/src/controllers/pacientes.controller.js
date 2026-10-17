@@ -4,6 +4,7 @@
 // EgresoClinico, separados de los datos administrativos del Paciente. Los
 // listados nunca exponen esos campos (DTO con select explicito).
 import path from "node:path";
+import fs from "node:fs";
 import crypto from "crypto";
 import { prisma } from "../config/prisma.js";
 import { encrypt, decrypt } from "../utils/crypto.util.js";
@@ -14,6 +15,7 @@ import { ROLES } from "../utils/roles.util.js";
 import { validarPdf, guardarArchivoCifrado, validarArchivo } from "../utils/archivos.util.js";
 
 const DOCUMENTOS_DIR = path.join(process.cwd(), "uploads", "documentos");
+const DIAGNOSTICOS_DIR = path.join(process.cwd(), "uploads", "diagnosticos");
 const DOCUMENT_MAX_MB = Number(process.env.DOCUMENT_MAX_MB || 20);
 
 // Campos administrativos, de ingreso y de egreso administrativo (no
@@ -576,4 +578,53 @@ export async function crearIngreso(req, res) {
   });
   await registrarActividad(req.user.id, "crear_ingreso", `${paciente.nombreCompleto} (${paciente.historiaClinica})`);
   res.status(201).json(ingreso);
+}
+
+// Elimina por completo un paciente y todo su expediente. Es una accion
+// destructiva e irreversible: borra en una sola transaccion las admisiones,
+// los diagnosticos cifrados, sus archivos adjuntos, los documentos, los
+// tratamientos, las recetas, las facturas y los accesos de auditoria; los
+// archivos en disco se eliminan despues (best-effort). Solo Recepcion y
+// Administracion. La bitacora de actividad del propio sistema se conserva.
+export async function eliminar(req, res) {
+  const id = Number(req.params.id);
+  const paciente = await prisma.paciente.findUnique({
+    where: { id },
+    select: { id: true, nombreCompleto: true, historiaClinica: true },
+  });
+  if (!paciente) return res.status(404).json({ error: "Paciente no encontrado" });
+
+  // Los nombres de archivo en disco se recuperan antes de borrar las filas,
+  // para poder limpiar los uploads una vez confirmada la transaccion.
+  const [documentos, adjuntos] = await Promise.all([
+    prisma.documentoPaciente.findMany({ where: { pacienteId: id }, select: { nombreArchivo: true } }),
+    prisma.diagnosticoArchivo.findMany({ where: { pacienteId: id }, select: { nombreArchivo: true } }),
+  ]);
+
+  await prisma.$transaction([
+    prisma.accesoDiagnostico.deleteMany({ where: { pacienteId: id } }),
+    prisma.tratamientoItem.deleteMany({ where: { pacienteId: id } }),
+    prisma.receta.deleteMany({ where: { pacienteId: id } }),
+    prisma.diagnostico.deleteMany({ where: { pacienteId: id } }),
+    prisma.diagnosticoArchivo.deleteMany({ where: { pacienteId: id } }),
+    prisma.documentoPaciente.deleteMany({ where: { pacienteId: id } }),
+    prisma.egresoClinico.deleteMany({ where: { pacienteId: id } }),
+    prisma.registroMaternidad.deleteMany({ where: { pacienteId: id } }),
+    prisma.ingreso.deleteMany({ where: { pacienteId: id } }),
+    prisma.bitacoraVisita.deleteMany({ where: { pacienteId: id } }),
+    prisma.facturaHospital.deleteMany({ where: { pacienteId: id } }),
+    prisma.facturaFarmacia.updateMany({ where: { pacienteId: id }, data: { pacienteId: null } }),
+    prisma.tokenTemporal.deleteMany({ where: { pacienteId: id } }),
+    prisma.paciente.delete({ where: { id } }),
+  ]);
+
+  for (const doc of documentos) {
+    try { fs.unlinkSync(path.join(DOCUMENTOS_DIR, doc.nombreArchivo)); } catch { /* archivo ya no existe */ }
+  }
+  for (const adj of adjuntos) {
+    try { fs.unlinkSync(path.join(DIAGNOSTICOS_DIR, adj.nombreArchivo)); } catch { /* archivo ya no existe */ }
+  }
+
+  await registrarActividad(req.user.id, "eliminar_paciente", `${paciente.nombreCompleto} (${paciente.historiaClinica})`);
+  res.json({ ok: true });
 }
