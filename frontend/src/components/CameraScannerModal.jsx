@@ -126,9 +126,19 @@ export function CameraScannerModal({
     setError(null);
     setAviso(null);
     setPdfResultado(null);
+    // La camara en vivo (getUserMedia) solo existe en "contexto seguro":
+    // HTTPS o localhost. Si el sistema se abrio por la IP de la red en HTTP
+    // (por ejemplo http://192.168.0.104:8080), el navegador bloquea la
+    // camara y getUserMedia ni siquiera aparece — hay que avisarlo en vez
+    // de mostrar un error generico.
+    if (!window.isSecureContext) {
+      setSoportaCamara(false);
+      setError("La cámara solo funciona sobre HTTPS o localhost. Abra el sistema por su dirección https (por ejemplo, el enlace de ngrok) o use 'Subir imagen o PDF del escáner'.");
+      return;
+    }
     if (!navigator.mediaDevices?.getUserMedia) {
       setSoportaCamara(false);
-      setError("Este navegador no permite usar la cámara. Use 'Seleccionar imagen' para escanear desde un archivo.");
+      setError("Este navegador no permite usar la cámara. Use 'Subir imagen o PDF del escáner' para escanear desde un archivo.");
       return;
     }
     setEstado("solicitando_permiso");

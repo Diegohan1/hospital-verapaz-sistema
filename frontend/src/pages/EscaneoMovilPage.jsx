@@ -77,6 +77,7 @@ export function EscaneoMovilPage() {
   const [recuperadas] = useState(() => leerPaginasGuardadas(sesionId).length);
 
   const inputRef = useRef(null);
+  const camaraRef = useRef(null);
 
   useEffect(() => {
     api.get(`/escaneo-movil/sesiones/${sesionId}/info`)
@@ -214,8 +215,8 @@ export function EscaneoMovilPage() {
       <div className="max-w-md mx-auto text-white">
         <div className="font-semibold text-lg mb-1 flex items-center gap-2"><Camera size={20} /> Escanear expediente</div>
         <p className="text-xs mb-4" style={{ color: "#aaa" }}>
-          Toque el botón: puede elegir "Cámara" para tomar una foto por página, o "Archivos"/"Galería" para un PDF o
-          imagen ya guardada. El sistema corrige bordes y perspectiva automáticamente.
+          Toque "Tomar foto con la cámara" para fotografiar el documento página por página, o "Elegir imagen o PDF"
+          para un archivo ya guardado. El sistema corrige bordes y perspectiva automáticamente.
         </p>
 
         {error && (
@@ -238,6 +239,14 @@ export function EscaneoMovilPage() {
         )}
 
         <button
+          onClick={() => camaraRef.current?.click()}
+          disabled={procesando}
+          className="w-full py-3 rounded-xl font-semibold flex items-center justify-center gap-1.5 mb-2"
+          style={{ backgroundColor: COLORS.green, color: "white", opacity: procesando ? 0.7 : 1 }}
+        >
+          <Camera size={16} /> Tomar foto con la cámara
+        </button>
+        <button
           onClick={() => inputRef.current?.click()}
           disabled={procesando}
           className="w-full py-3 rounded-xl font-semibold flex items-center justify-center gap-1.5"
@@ -245,6 +254,10 @@ export function EscaneoMovilPage() {
         >
           <ImagePlus size={16} /> Elegir imagen o PDF
         </button>
+        {/* capture="environment" abre directamente la camara trasera del
+            telefono; el otro input (sin capture) ofrece camara, galeria o
+            archivos. En iPhone, "capture" abre la camara. */}
+        <input ref={camaraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={manejarArchivo} aria-label="Tomar foto con la cámara" />
         <input ref={inputRef} type="file" accept="image/*,.pdf,application/pdf" className="hidden" onChange={manejarArchivo} aria-label="Elegir imagen o PDF del almacenamiento" />
 
         {paginas.length > 0 && (
