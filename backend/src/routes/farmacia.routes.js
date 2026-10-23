@@ -14,10 +14,10 @@ const soloFarmacia = requireRole(ROLES.FARMACIA, ROLES.ADMIN);
 // no se interprete como un id de medicamento.
 router.get("/ventas", soloFarmacia, controller.listarVentas);
 router.post("/ventas", soloFarmacia, controller.registrarVenta); // RF-20/RF-24/RF-27
-router.get("/ventas/:id", controller.obtenerVenta); // para la vista imprimible
+router.get("/ventas/:id", requireRole(ROLES.ADMIN, ROLES.FARMACIA, ROLES.FACTURACION), controller.obtenerVenta); // para la vista imprimible
 
-router.get("/", controller.listar); // RF-22
-router.get("/:id", controller.obtenerUno);
+router.get("/", soloFarmacia, controller.listar); // RF-22
+router.get("/:id", soloFarmacia, controller.obtenerUno);
 router.post("/", soloFarmacia, controller.crear);
 router.put("/:id", soloFarmacia, controller.actualizar);
 router.post("/:id/entradas", soloFarmacia, controller.registrarEntrada); // RF-23

@@ -30,6 +30,22 @@ export function AuthProvider({ children }) {
     setUsuario(null);
   }
 
+  // Al arrancar, refresca el usuario desde el backend para que los roles y
+  // permisos coincidan siempre con la base (y no con lo que quedo guardado en
+  // localStorage de una sesion anterior).
+  useEffect(() => {
+    if (!localStorage.getItem("token")) return;
+    api.get("/auth/me")
+      .then((data) => {
+        if (!data?.usuario) return;
+        localStorage.setItem("usuario", JSON.stringify(data.usuario));
+        setUsuario(data.usuario);
+      })
+      .catch(() => {
+        // Si el token ya no sirve, api.js dispara "auth:sesion-expirada".
+      });
+  }, []);
+
   // Si el JWT expira o deja de ser valido, api.js dispara este evento:
   // cerramos sesion automaticamente en vez de dejar la app rota mostrando
   // "Token invalido" en cada pantalla (RF-29).

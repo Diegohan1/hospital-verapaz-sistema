@@ -5,7 +5,7 @@ import {
   ShieldCheck, BarChart3, LogOut, Menu, X,
 } from "lucide-react";
 import { COLORS } from "../styles/tokens";
-import { etiquetasRoles } from "../utils/roles";
+import { etiquetasRoles, modulosPermitidos } from "../utils/roles";
 import logoVerapaz from "../assets/logo-verapaz.png";
 
 const NAV_ITEMS = [
@@ -30,13 +30,18 @@ function iniciales(nombre) {
     .join("");
 }
 
-function SidebarContent({ usuario, onLogout, onNavigate, restrictedMode, onToggleRestrictedMode, giroLogo }) {
+function SidebarContent({ usuario, onLogout, onNavigate, restrictedMode, puedeAlternarModo, onToggleRestrictedMode, giroLogo }) {
   const location = useLocation();
-  
-  // Filtrar items según el modo restringido
-  const visibleItems = NAV_ITEMS.filter(item => 
-    restrictedMode ? item.allowedInRestricted : true
-  );
+
+  // Permisos por rol: el Administrador ve todos; Recepcion/Enfermeria/
+  // Consulta solo Registro y Expediente. El modo restringido manual (solo
+  // para el Administrador) oculta ademas los demas modulos.
+  const permitidos = modulosPermitidos(usuario);
+  const visibleItems = NAV_ITEMS.filter((item) => {
+    if (permitidos !== null && !permitidos.has(item.key)) return false;
+    if (permitidos === null && restrictedMode && !item.allowedInRestricted) return false;
+    return true;
+  });
 
   return (
     <>
@@ -44,13 +49,13 @@ function SidebarContent({ usuario, onLogout, onNavigate, restrictedMode, onToggl
         <button
           onClick={onToggleRestrictedMode}
           className="flex items-center gap-2.5 w-full"
-          aria-label={restrictedMode ? "Mostrar todos los módulos" : "Ocultar módulos (solo Registro y Expediente)"}
+          aria-label={puedeAlternarModo ? (restrictedMode ? "Mostrar todos los módulos" : "Ocultar módulos (solo Registro y Expediente)") : "Hospital Verapaz"}
           style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}
         >
           <img key={giroLogo} src={logoVerapaz} alt="Hospital Verapaz" className={"w-7 h-7 rounded-full shrink-0" + (giroLogo ? " animate-giro-total" : "")} />
           <div className="text-white font-bold text-sm tracking-wide flex-1 text-left">
             HOSPITAL VERAPAZ
-            {restrictedMode && (
+            {restrictedMode && puedeAlternarModo && (
               <span className="block text-[10px] font-normal opacity-75">Modo restringido</span>
             )}
           </div>
@@ -108,13 +113,16 @@ function SidebarContent({ usuario, onLogout, onNavigate, restrictedMode, onToggl
 export function Layout({ usuario, onLogout, children }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [restrictedMode, setRestrictedMode] = useState(false);
+  // Solo el Administrador puede alternar manualmente el modo restringido:
+  // los demas roles ya tienen su menu limitado por permisos.
+  const puedeAlternarModo = modulosPermitidos(usuario) === null;
   // Se incrementa en cada clic: cambia la key del logo para reiniciar la
   // animacion de "giro total" (360 grados).
   const [giroLogo, setGiroLogo] = useState(0);
 
   const toggleRestrictedMode = () => {
-    setRestrictedMode(prev => !prev);
     setGiroLogo(n => n + 1);
+    if (puedeAlternarModo) setRestrictedMode(prev => !prev);
   };
 
   return (
@@ -128,6 +136,7 @@ export function Layout({ usuario, onLogout, children }) {
           usuario={usuario} 
           onLogout={onLogout} 
           restrictedMode={restrictedMode}
+          puedeAlternarModo={puedeAlternarModo}
           onToggleRestrictedMode={toggleRestrictedMode}
           giroLogo={giroLogo}
         />
@@ -150,6 +159,7 @@ export function Layout({ usuario, onLogout, children }) {
               onLogout={onLogout} 
               onNavigate={() => setMobileOpen(false)}
               restrictedMode={restrictedMode}
+              puedeAlternarModo={puedeAlternarModo}
               onToggleRestrictedMode={toggleRestrictedMode}
               giroLogo={giroLogo}
             />
@@ -165,14 +175,14 @@ export function Layout({ usuario, onLogout, children }) {
           </button>
           <button
             onClick={toggleRestrictedMode}
-            aria-label={restrictedMode ? "Mostrar todos los módulos" : "Ocultar módulos (solo Registro y Expediente)"}
+            aria-label={puedeAlternarModo ? (restrictedMode ? "Mostrar todos los módulos" : "Ocultar módulos (solo Registro y Expediente)") : "Hospital Verapaz"}
             style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}
           >
             <img key={giroLogo} src={logoVerapaz} alt="Hospital Verapaz" className={"w-6 h-6 rounded-full" + (giroLogo ? " animate-giro-total" : "")} />
           </button>
           <div className="text-sm font-bold" style={{ color: COLORS.navy }}>
             HOSPITAL VERAPAZ
-            {restrictedMode && <span className="block text-[10px] font-normal opacity-75">Modo restringido</span>}
+            {restrictedMode && puedeAlternarModo && <span className="block text-[10px] font-normal opacity-75">Modo restringido</span>}
           </div>
         </div>
 

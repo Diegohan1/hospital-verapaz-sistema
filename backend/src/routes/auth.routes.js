@@ -16,7 +16,11 @@ router.post("/login", loginLimiter, controller.login);
 router.post("/forgot-password", resetLimiter, controller.forgotPassword);
 router.post("/reset-password", resetLimiter, controller.resetPassword);
 router.post("/logout", requireAuth, controller.logout);
+router.get("/me", requireAuth, controller.me);
 router.post("/token", requireAuth, requireRole(ROLES.ADMIN), controller.solicitarTokenTemporal); // RF-33
-router.post("/token/auto", requireAuth, controller.autogenerarTokenTemporal); // RF-34
+// Solo el Administrador emite codigos: los demas roles (secretaria, doctor)
+// deben pedirselo. Antes cualquier usuario con "puedeAutogenerarToken" podia
+// generarse su propio codigo, lo que anulaba el control.
+router.post("/token/auto", requireAuth, requireRole(ROLES.ADMIN), controller.autogenerarTokenTemporal); // RF-34
 
 export default router;

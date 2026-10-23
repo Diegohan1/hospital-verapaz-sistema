@@ -3,13 +3,25 @@ import { prisma } from "../config/prisma.js";
 import { ROLES } from "../utils/roles.util.js";
 
 // Verifica que la peticion traiga un JWT valido (sesion iniciada) - RF-29
-export function requireAuth(req, res, next) {
+export async function requireAuth(req, res, next) {
   const header = req.headers.authorization;
   if (!header) return res.status(401).json({ error: "No autenticado" });
 
   try {
     const token = header.replace("Bearer ", "");
-    req.user = jwt.verify(token, process.env.JWT_SECRET);
+    const payload = jwt.verify(token, process.env.JWT_SECRET);
+
+    // Los roles se leen de la base en cada peticion, no solo del JWT: si al
+    // usuario le cambiaron el rol (o el token quedo viejo), los permisos se
+    // aplican de inmediato. Tambien evita que un Administrador siga viendo
+    // como tal despues de que le quitaran el rol.
+    const usuario = await prisma.usuario.findUnique({
+      where: { id: payload.id },
+      select: { id: true, nombre: true, roles: true },
+    });
+    if (!usuario) return res.status(401).json({ error: "Usuario no encontrado" });
+
+    req.user = { ...payload, id: usuario.id, nombre: usuario.nombre, roles: usuario.roles };
     // "en linea": se actualiza sin bloquear la respuesta ni interrumpirla si falla
     prisma.usuario.update({ where: { id: req.user.id }, data: { ultimaActividad: new Date() } }).catch(() => {});
     next();

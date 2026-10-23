@@ -44,6 +44,18 @@ export async function login(req, res) {
   });
 }
 
+// Devuelve la sesion actual con los roles frescos de la base. El frontend la
+// llama al arrancar para no quedarse con un usuario/roles viejos guardados
+// en localStorage (por ejemplo, si al Administrador le cambiaron el rol).
+export async function me(req, res) {
+  const usuario = await prisma.usuario.findUnique({
+    where: { id: req.user.id },
+    select: { id: true, nombre: true, correo: true, roles: true, puedeAutogenerarToken: true },
+  });
+  if (!usuario) return res.status(401).json({ error: "Usuario no encontrado" });
+  res.json({ usuario });
+}
+
 // Registra la hora de salida. El JWT sigue siendo valido hasta que expire
 // (no hay lista de revocacion), pero queda constancia de cuando el usuario
 // decidio cerrar sesion.

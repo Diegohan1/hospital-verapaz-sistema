@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { ShieldAlert, KeyRound, Plus, Trash2, History, EyeOff, FileText, X, Camera } from "lucide-react";
+import { ShieldAlert, Plus, Trash2, History, EyeOff, FileText, X, Camera } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
@@ -309,17 +309,6 @@ export function ExpedientePage({ pacienteIdInicial }) {
   function abrirModal() {
     setMensajeError(null);
     setModalAbierto(true);
-  }
-
-  async function autogenerarToken() {
-    setMensajeError(null);
-    try {
-      const data = await api.post("/auth/token/auto", { pacienteId: selectedId });
-      setTempToken(data.token);
-      setTokenInfo(`Token generado, expira ${new Date(data.expiraEn).toLocaleTimeString()}`);
-    } catch (err) {
-      setMensajeError(err.message);
-    }
   }
 
   // RF-11: el Administrador confirma sin token; los demas roles necesitan
@@ -708,17 +697,13 @@ export function ExpedientePage({ pacienteIdInicial }) {
           </Button>
         ) : (
           <div className="flex flex-col gap-3">
-            <FormField label="Token de acceso temporal (RF-33)">
-              <TextInput value={tempToken} onChange={(e) => setTempToken(e.target.value)} placeholder="Pegue aquí el token" />
+            <FormField label="Código de acceso temporal">
+              <TextInput value={tempToken} onChange={(e) => setTempToken(e.target.value)} placeholder="Escriba el código que le dio el Administrador" />
             </FormField>
             {tokenInfo && <p className="text-xs -mt-1" style={{ color: COLORS.green }}>{tokenInfo}</p>}
-            {usuario.puedeAutogenerarToken ? (
-              <Button variant="secondary" onClick={autogenerarToken}>
-                <span className="flex items-center gap-1.5"><KeyRound size={14} /> Autogenerar token (RF-34)</span>
-              </Button>
-            ) : (
-              <p className="text-xs" style={{ color: "#888" }}>No tiene permiso para autogenerar tokens. Solicítelo al Administrador desde Seguridad y Roles.</p>
-            )}
+            <p className="text-xs" style={{ color: "#888" }}>
+              Este código lo genera el Administrador desde Seguridad y Roles. Solicítelo si necesita ver el diagnóstico.
+            </p>
             <Button onClick={confirmarYVer} disabled={!tempToken || estado === "cargando"}>
               {estado === "cargando" ? "Verificando…" : "Confirmar y ver diagnóstico"}
             </Button>

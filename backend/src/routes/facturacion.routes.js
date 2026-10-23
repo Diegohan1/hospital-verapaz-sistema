@@ -24,8 +24,8 @@ router.get("/categorias-fiscales", requireRole(ROLES.ADMIN, ROLES.FACTURACION), 
 router.post("/categorias-fiscales", requireRole(ROLES.ADMIN), categoriasFiscales.crear);
 router.put("/categorias-fiscales/:id", requireRole(ROLES.ADMIN), categoriasFiscales.actualizar);
 
-router.get("/", controller.listar);
-router.get("/:id", controller.obtenerUno);
+router.get("/", requireRole(ROLES.ADMIN, ROLES.FACTURACION), controller.listar);
+router.get("/:id", requireRole(ROLES.ADMIN, ROLES.FACTURACION), controller.obtenerUno);
 router.post("/", requireRole(ROLES.FACTURACION, ROLES.ADMIN), controller.crear); // RF-17/18/19
 
 export default router;

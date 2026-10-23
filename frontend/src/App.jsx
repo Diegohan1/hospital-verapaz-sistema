@@ -2,6 +2,7 @@ import React from "react";
 import { Routes, Route, Navigate, useNavigate, useSearchParams, useLocation } from "react-router-dom";
 import { Layout } from "./components/Layout";
 import { useAuth } from "./context/AuthContext";
+import { puedeVerModulo } from "./utils/roles";
 import { LoginPage } from "./pages/LoginPage";
 import { RecuperarPasswordPage } from "./pages/RecuperarPasswordPage";
 import { CambiarPasswordPage } from "./pages/CambiarPasswordPage";
@@ -32,6 +33,15 @@ function Redirigir({ a }) {
   return <Navigate to={`${a}${location.search}`} replace />;
 }
 
+// Bloquea el acceso directo por URL a modulos que el rol no puede ver
+// (por ejemplo, una secretaria escribiendo /financiera a mano). El menu ya
+// los oculta; esto cierra la puerta tambien en la ruta.
+function ModuloProtegido({ modulo, children }) {
+  const { usuario } = useAuth();
+  if (!puedeVerModulo(usuario, modulo)) return <Navigate to="/registro" replace />;
+  return children;
+}
+
 export default function App() {
   const { usuario, logout } = useAuth();
   const navigate = useNavigate();
@@ -58,18 +68,18 @@ export default function App() {
     <Layout usuario={usuario} onLogout={logout}>
       <Routes>
         <Route path="/" element={<Navigate to="/registro" replace />} />
-        <Route path="/registro" element={<RegistroPage onVerExpediente={irAExpediente} />} />
-        <Route path="/expediente" element={<ConPacienteDeUrl Page={ExpedientePage} />} />
-        <Route path="/documentos" element={<ConPacienteDeUrl Page={DocumentosPage} />} />
+        <Route path="/registro" element={<ModuloProtegido modulo="registro"><RegistroPage onVerExpediente={irAExpediente} /></ModuloProtegido>} />
+        <Route path="/expediente" element={<ModuloProtegido modulo="expediente"><ConPacienteDeUrl Page={ExpedientePage} /></ModuloProtegido>} />
+        <Route path="/documentos" element={<ModuloProtegido modulo="documentos"><ConPacienteDeUrl Page={DocumentosPage} /></ModuloProtegido>} />
         {/* "Anexos" se fusiono con "Documentos escaneados" el 23/09/2026; se conserva el enlace viejo por si quedo guardado en algun lado */}
         <Route path="/anexos" element={<Redirigir a="/documentos" />} />
-        <Route path="/tratamiento" element={<ConPacienteDeUrl Page={TratamientoPage} />} />
-        <Route path="/referidos" element={<ReferidosPage />} />
-        <Route path="/financiera" element={<FinancieraPage />} />
-        <Route path="/gastos" element={<GastosPage />} />
-        <Route path="/farmacia" element={<FarmaciaPage />} />
-        <Route path="/seguridad" element={<SeguridadPage />} />
-        <Route path="/reportes" element={<ReportesPage />} />
+        <Route path="/tratamiento" element={<ModuloProtegido modulo="tratamiento"><ConPacienteDeUrl Page={TratamientoPage} /></ModuloProtegido>} />
+        <Route path="/referidos" element={<ModuloProtegido modulo="referidos"><ReferidosPage /></ModuloProtegido>} />
+        <Route path="/financiera" element={<ModuloProtegido modulo="financiera"><FinancieraPage /></ModuloProtegido>} />
+        <Route path="/gastos" element={<ModuloProtegido modulo="gastos"><GastosPage /></ModuloProtegido>} />
+        <Route path="/farmacia" element={<ModuloProtegido modulo="farmacia"><FarmaciaPage /></ModuloProtegido>} />
+        <Route path="/seguridad" element={<ModuloProtegido modulo="seguridad"><SeguridadPage /></ModuloProtegido>} />
+        <Route path="/reportes" element={<ModuloProtegido modulo="reportes"><ReportesPage /></ModuloProtegido>} />
         <Route path="*" element={<Navigate to="/registro" replace />} />
       </Routes>
     </Layout>
