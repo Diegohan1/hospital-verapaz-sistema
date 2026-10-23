@@ -7,7 +7,7 @@ import { Button } from "../components/Button";
 import { Banner } from "../components/Banner";
 import { Modal } from "../components/Modal";
 import { FacturaImprimible } from "../components/FacturaImprimible";
-import { FormField, TextInput, Select } from "../components/FormField";
+import { FormField, TextInput, Select, SearchInput } from "../components/FormField";
 import { PacienteBuscador } from "../components/PacienteBuscador";
 import { useFetch } from "../hooks/useFetch";
 import { api } from "../services/api";
@@ -185,11 +185,12 @@ export function FarmaciaPage() {
       {error && <Banner tone="error">{error}</Banner>}
 
       <div className="mb-4">
-        <TextInput
+        <SearchInput
           placeholder="Buscar medicamento por nombre…"
           value={buscarMed}
           onChange={(e) => setBuscarMed(e.target.value)}
-          style={{ maxWidth: 360 }}
+          onClear={setBuscarMed}
+          containerStyle={{ maxWidth: 360 }}
         />
       </div>
 

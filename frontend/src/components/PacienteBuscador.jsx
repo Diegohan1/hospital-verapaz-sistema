@@ -75,17 +75,17 @@ export function PacienteBuscador({ pacienteSeleccionado, onSelect, permitirVacio
           <TextInput
             value={query}
             placeholder={permitirVacio ? "Sin paciente — buscar por nombre, DPI o historia clínica…" : placeholder}
-            style={{ paddingLeft: 32, paddingRight: pacienteSeleccionado ? 32 : undefined }}
+            style={{ paddingLeft: 32, paddingRight: query ? 32 : undefined }}
             onFocus={() => setAbierto(true)}
             onChange={(e) => { setQuery(e.target.value); setAbierto(true); }}
           />
-          {pacienteSeleccionado && (
+          {query && (
             <button
               type="button"
               onClick={limpiar}
               className="absolute right-2.5 top-1/2 -translate-y-1/2"
               style={{ color: "#999" }}
-              aria-label={permitirVacio ? "Quitar paciente" : "Cambiar paciente"}
+              aria-label={pacienteSeleccionado ? "Quitar paciente" : "Limpiar búsqueda"}
             >
               <X size={15} />
             </button>

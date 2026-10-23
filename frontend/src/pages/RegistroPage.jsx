@@ -9,7 +9,7 @@ import { Modal } from "../components/Modal";
 import { FichaPacienteImprimible } from "../components/FichaPacienteImprimible";
 import { CameraScannerModal } from "../components/CameraScannerModal";
 import { PacienteBuscador } from "../components/PacienteBuscador";
-import { FormField, TextInput, Select, TextArea } from "../components/FormField";
+import { FormField, TextInput, Select, TextArea, SearchInput } from "../components/FormField";
 import { useFetch } from "../hooks/useFetch";
 import { usePaginatedFetch } from "../hooks/usePaginatedFetch";
 import { Pagination } from "../components/Pagination";
@@ -1069,11 +1069,12 @@ function ListaAdjuntos({ archivos, onChange, titulo = "Adjuntar archivos (result
       {tab === "lista" ? (
         <>
           <div className="mb-4 flex gap-2">
-            <TextInput
+            <SearchInput
               placeholder="Buscar por nombre, DPI o historia clínica (RF-02)"
               value={buscarInput}
               onChange={(e) => setBuscarInput(e.target.value)}
-              style={{ maxWidth: 360 }}
+              onClear={setBuscarInput}
+              containerStyle={{ maxWidth: 360, flex: 1 }}
             />
           </div>
           {pacientesLista.error && <Banner tone="error">{pacientesLista.error}</Banner>}

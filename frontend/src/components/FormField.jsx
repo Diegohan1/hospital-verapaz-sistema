@@ -1,4 +1,5 @@
 import React from "react";
+import { X } from "lucide-react";
 import { COLORS } from "../styles/tokens";
 
 export function FormField({ label, children }) {
@@ -47,5 +48,30 @@ export function TextArea(props) {
       className={baseClass + " focus:border-navy " + (props.className || "")}
       style={{ ...baseStyle, ...focusVars, ...props.style }}
     />
+  );
+}
+
+// Campo de busqueda con una "X" que aparece cuando hay texto y lo limpia.
+// Se usa en los buscadores de las paginas para que la X siempre funcione.
+export function SearchInput({ value, onClear, containerStyle, style, ...props }) {
+  return (
+    <div className="relative" style={containerStyle}>
+      <TextInput
+        {...props}
+        value={value}
+        style={{ paddingRight: value ? 34 : undefined, ...style }}
+      />
+      {value ? (
+        <button
+          type="button"
+          onClick={() => onClear("")}
+          className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-full p-0.5 hover:bg-gray-100"
+          style={{ color: "#999" }}
+          aria-label="Limpiar búsqueda"
+        >
+          <X size={15} />
+        </button>
+      ) : null}
+    </div>
   );
 }

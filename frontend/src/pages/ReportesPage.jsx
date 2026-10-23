@@ -7,7 +7,7 @@ import { PageHeader } from "../components/PageHeader";
 import { Card } from "../components/Card";
 import { Table } from "../components/Table";
 import { Button } from "../components/Button";
-import { FormField, TextInput } from "../components/FormField";
+import { FormField, TextInput, SearchInput } from "../components/FormField";
 import { useFetch } from "../hooks/useFetch";
 import { usePaginatedFetch } from "../hooks/usePaginatedFetch";
 import { Pagination } from "../components/Pagination";
@@ -290,11 +290,12 @@ export function ReportesPage() {
 
         {mostrarAuditoria && (
           <div className="mt-4 animate-fade-in">
-            <TextInput
+            <SearchInput
               placeholder="Buscar por usuario, paciente o historia clínica…"
               value={buscarInput}
               onChange={(e) => setBuscarInput(e.target.value)}
-              style={{ maxWidth: 360, marginBottom: 12 }}
+              onClear={setBuscarInput}
+              containerStyle={{ maxWidth: 360, marginBottom: 12 }}
             />
             <Table
               headers={["Usuario", "Rol", "Paciente", "Acción", "Tipo de acceso", "Fecha"]}
@@ -348,11 +349,12 @@ export function ReportesPage() {
 
         {mostrarBitacora && (
           <div className="mt-4 animate-fade-in flex flex-wrap gap-3 items-end">
-            <TextInput
+            <SearchInput
               placeholder="Buscar por usuario o detalle…"
               value={buscarBitacoraInput}
               onChange={(e) => setBuscarBitacoraInput(e.target.value)}
-              style={{ maxWidth: 300 }}
+              onClear={setBuscarBitacoraInput}
+              containerStyle={{ maxWidth: 300 }}
             />
             <FormField label="Acción">
               <select
