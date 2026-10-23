@@ -120,6 +120,26 @@ export function CameraScannerModal({
 
   useEffect(() => () => detenerCamara(), [detenerCamara]);
 
+  // Engancha el stream al <video> cuando el elemento ya esta montado. El
+  // elemento solo se renderiza en estado "capturando" (y se re-monta al
+  // volver de "procesando" tras escanear una pagina), por eso se re-engancha
+  // cuando cambia el estado.
+  useEffect(() => {
+    if (estado !== "capturando") return;
+    const video = videoRef.current;
+    const stream = streamRef.current;
+    if (!video || !stream) return;
+    if (video.srcObject === stream) {
+      video.play().catch(() => {});
+      return;
+    }
+    video.srcObject = stream;
+    const reproducir = () => video.play().catch(() => {});
+    if (video.readyState >= 1) reproducir();
+    else video.addEventListener("loadedmetadata", reproducir, { once: true });
+    return () => video.removeEventListener("loadedmetadata", reproducir);
+  }, [estado]);
+
   // ---- Camara ----
 
   async function activarCamara() {
@@ -148,30 +168,12 @@ export function CameraScannerModal({
         audio: false,
       });
       streamRef.current = stream;
-      // El video solo se puede pintar cuando el elemento ya conoce el stream.
-      // Antes se asignaba srcObject y se llamaba play() en el mismo tick: si
-      // play() resolvia antes de que el elemento tuviera datos, el <video>
-      // quedaba en negro aunque el permiso estuviera concedido. Se espera a
-      // "loadedmetadata" (con respaldo por si el evento ya ocurrio) y recien
-      // ahi se reproduce.
-      const video = videoRef.current;
-      if (video) {
-        video.srcObject = stream;
-        if (video.readyState < 1) {
-          await new Promise((resolver) => {
-            const listo = () => { video.removeEventListener("loadedmetadata", listo); resolver(); };
-            video.addEventListener("loadedmetadata", listo);
-            setTimeout(listo, 1500);
-          });
-        }
-        try {
-          await video.play();
-        } catch {
-          // Algunos navegadores rechazan play() si el elemento aun no tiene
-          // datos suficientes; con autoPlay + muted el stream se reproduce
-          // igual al llegar el primer frame.
-        }
-      }
+      // IMPORTANTE: el <video> solo existe en el DOM cuando estado es
+      // "capturando". Si se asigna srcObject aqui, videoRef.current todavia
+      // es null y el stream nunca se engancha al elemento -> pantalla negra
+      // con el permiso ya concedido. Solo guardamos el stream y cambiamos el
+      // estado; el useEffect de abajo se encarga de engancharlo cuando el
+      // elemento ya esta montado.
       setCamaraActiva(true);
       setEstado("capturando");
     } catch (err) {
