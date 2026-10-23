@@ -37,9 +37,15 @@ export const uploadEstudios = multer({
 
 // Lista solo metadatos (sin el contenido del diagnostico) para saber si
 // un paciente ya tiene expediente registrado, sin exponer datos sensibles.
+// Devuelve tambien ingresoId para que la interfaz sepa que ingreso ya tiene
+// su diagnostico sin abrir el contenido protegido.
 export async function listar(req, res) {
+  const where = {};
+  if (req.query.pacienteId) where.pacienteId = Number(req.query.pacienteId);
+
   const diagnosticos = await prisma.diagnostico.findMany({
-    select: { id: true, pacienteId: true, codigoCie: true, creadoEn: true },
+    where,
+    select: { id: true, pacienteId: true, ingresoId: true, codigoCie: true, creadoEn: true },
     orderBy: { creadoEn: "desc" },
     take: 50,
   });

@@ -249,11 +249,23 @@ export function ExpedientePage({ pacienteIdInicial }) {
     { enabled: !!selectedId }
   );
   const listaDocumentos = Array.isArray(documentosPaciente) ? documentosPaciente : documentosPaciente?.items || [];
+  // Metadatos de diagnosticos del paciente (sin contenido): permite saber
+  // que ingreso ya tiene su diagnostico y no pedir un codigo solo para eso.
+  const { data: metaDiagnosticos, reload: recargarMetaDiagnosticos } = useFetch(
+    selectedId ? `/expedientes?pacienteId=${selectedId}` : null,
+    { enabled: !!selectedId }
+  );
 
   const [modalAbierto, setModalAbierto] = useState(false);
   const [tempToken, setTempToken] = useState("");
   const [tokenInfo, setTokenInfo] = useState(null);
   const [diagnostico, setDiagnostico] = useState(null);
+  // Diagnostico del ingreso que se esta viendo (solo lectura) y modo del
+  // modal de codigo: "ver" para consultar, "registrar" para capturar.
+  const [diagnosticoVer, setDiagnosticoVer] = useState(null);
+  const [verIngresoId, setVerIngresoId] = useState(null);
+  const [modalVerAbierto, setModalVerAbierto] = useState(false);
+  const [modoModal, setModoModal] = useState("ver");
   const [estado, setEstado] = useState("idle"); // idle | cargando | visible | sin-registro
   const [mostrarHistorial, setMostrarHistorial] = useState(false);
   const [mensajeError, setMensajeError] = useState(null);
@@ -306,33 +318,18 @@ export function ExpedientePage({ pacienteIdInicial }) {
     return esAdmin ? {} : { "x-temp-token": tempToken };
   }
 
-  function abrirModal() {
-    setMensajeError(null);
-    setModalAbierto(true);
-  }
-
-  // RF-11: el Administrador confirma sin token; los demas roles necesitan
-  // uno vigente (RF-33/RF-34). El modal es el unico punto de entrada para
-  // ver el diagnostico, para dejar claro que es una accion sensible (RNF-08).
-  //
-  // Al ver el diagnostico se abre ademas el PDF escaneado del expediente
-  // fisico (el que se genero al fotografiar el expediente en Registro y
-  // Admision). Se abre en una pestaña nueva; si el paciente no tiene ningun
-  // escaneo, la vista del diagnostico funciona igual que antes.
-  async function abrirExpedienteEscaneado() {
-    // La pestaña se abre YA (dentro del gesto del usuario) y se le pone la
-    // URL despues: si se abriera tras los await, el bloqueador de popups la
-    // mataria por no considerarla parte del clic.
-    let ventana = null;
-    try { ventana = window.open("", "_blank"); } catch { ventana = null; }
+  // Abre el PDF escaneado del expediente fisico. Si se indica un ingreso, se
+  // abre el escaneo de ESE ingreso (y no el del paciente en general); si no
+  // tiene, se usa el de admision o el primero disponible.
+  async function abrirExpedienteEscaneado(ingId) {
+    const ventana = (() => { try { return window.open("", "_blank"); } catch { return null; } })();
     try {
-      const documentos = await api.get(`/pacientes/${selectedId}/documentos`);
-      const lista = Array.isArray(documentos) ? documentos : documentos?.items || [];
-      // Preferimos el expediente de admision; si no, cualquier PDF o imagen.
+      const delIngreso = listaDocumentos.filter((d) => !ingId || d.ingresoId === Number(ingId));
+      const candidatos = delIngreso.length ? delIngreso : listaDocumentos;
       const expediente =
-        lista.find((d) => d.tipoDocumental === "expediente_admision") ||
-        lista.find((d) => d.mimeType === "application/pdf") ||
-        lista[0];
+        candidatos.find((d) => d.tipoDocumental === "expediente_admision") ||
+        candidatos.find((d) => d.mimeType === "application/pdf") ||
+        candidatos[0];
       if (!expediente) {
         if (ventana) ventana.close();
         return false;
@@ -349,30 +346,91 @@ export function ExpedientePage({ pacienteIdInicial }) {
     }
   }
 
-  async function confirmarYVer() {
+  // Carga el diagnostico de un ingreso concreto y lo muestra en modo lectura.
+  async function cargarDiagnosticoIngreso(ingId, headers) {
     setEstado("cargando");
     setMensajeError(null);
     try {
-      const data = await api.get(`/expedientes/paciente/${selectedId}`, { headers: headersToken() });
-      setDiagnostico(data);
+      const data = await api.get(`/expedientes/paciente/${selectedId}`, { headers });
+      const grupo = (data.ingresos || []).find((i) => i.id === Number(ingId));
+      const lista = grupo?.diagnosticos?.length
+        ? grupo.diagnosticos
+        : data.ingresoId === Number(ingId) ? [data] : [];
+      if (!lista.length) {
+        setEstado("sin-registro");
+        setModalAbierto(false);
+        setModalVerAbierto(true);
+        setDiagnosticoVer(null);
+        return;
+      }
+      setDiagnosticoVer(lista[0]);
       setEstado("visible");
       setModalAbierto(false);
-      // Se abre el PDF escaneado del expediente (Registro y Admision) junto
-      // al diagnostico, en la misma accion de "ver".
-      abrirExpedienteEscaneado();
-      // el token es de un solo uso (RNF-12): ya se consumio al verificar,
-      // asi que no lo dejamos activo para el formulario de "Registrar diagnostico"
-      setTempToken("");
-      setTokenInfo(null);
+      setModalVerAbierto(true);
+      abrirExpedienteEscaneado(ingId);
     } catch (err) {
       if (err.message.includes("no tiene diagnostico")) {
         setEstado("sin-registro");
         setModalAbierto(false);
+        setModalVerAbierto(true);
+        setDiagnosticoVer(null);
       } else {
         setEstado("idle");
         setMensajeError(err.message);
       }
     }
+  }
+
+  // "Ver diagnóstico" de un ingreso: el Administrador entra directo; los
+  // demas roles deben escribir el codigo que les dio el Administrador.
+  function verDiagnosticoDeIngreso(ingId) {
+    setVerIngresoId(ingId);
+    setDiagnosticoVer(null);
+    setMensajeError(null);
+    setEstado("idle");
+    if (esAdmin) {
+      cargarDiagnosticoIngreso(ingId, {});
+    } else {
+      setModoModal("ver");
+      setModalAbierto(true);
+    }
+  }
+
+  // "Registrar diagnóstico" de un ingreso: fija el ingreso y abre el
+  // formulario. Si el diagnostico de ese ingreso ya se habia consultado, se
+  // precarga para corregirlo en vez de empezar de cero.
+  function registrarDiagnosticoDeIngreso(ingId) {
+    setVerIngresoId(ingId);
+    setIngresoId(String(ingId));
+    setMensajeError(null);
+    if (diagnosticoVer && diagnosticoVer.ingresoId === Number(ingId)) {
+      cargarFormularioDesde(diagnosticoVer);
+    }
+    if (esAdmin) {
+      setMostrarFormulario(true);
+    } else {
+      setModoModal("registrar");
+      setModalAbierto(true);
+    }
+  }
+
+  function cargarFormularioDesde(d) {
+    setDatos({ ...datosVacios(), ...(d.datos || {}) });
+    setTipoAtencion(d.tipoAtencion || "");
+    setServicio(d.servicio || "");
+    setSalaCama(d.salaCama || "");
+  }
+
+  async function confirmarModal() {
+    if (modoModal === "registrar") {
+      // El codigo queda en tempToken para el POST; se consume al guardar.
+      setModalAbierto(false);
+      setMostrarFormulario(true);
+      return;
+    }
+    await cargarDiagnosticoIngreso(verIngresoId, headersToken());
+    setTempToken("");
+    setTokenInfo(null);
   }
 
   function setCampoDatos(campo, valor) {
@@ -444,7 +502,13 @@ export function ExpedientePage({ pacienteIdInicial }) {
       setSistemaActivo("general");
       setEstado("idle");
       setDiagnostico(null);
+      setDiagnosticoVer(null);
       setMostrarHistorial(false);
+      setMostrarFormulario(false);
+      // El codigo es de un solo uso: ya se consumio al guardar.
+      setTempToken("");
+      setTokenInfo(null);
+      recargarMetaDiagnosticos();
     } catch (err) {
       setMensajeGuardado({ tone: "error", texto: err.message });
     } finally {
@@ -526,7 +590,7 @@ export function ExpedientePage({ pacienteIdInicial }) {
         <Card style={{ marginBottom: 16 }}>
           <div className="flex items-center justify-between gap-3 mb-3">
             <div className="font-semibold text-sm">Historial de ingresos</div>
-            {(esAdmin || tempToken) && (
+            {(esAdmin || tieneRol(usuario, ROLES.RECEPCION)) && (
               <Button variant="secondary" onClick={() => setMostrarNuevoIngreso((v) => !v)}>
                 <span className="flex items-center gap-1.5"><Plus size={14} /> Nuevo ingreso</span>
               </Button>
@@ -536,56 +600,36 @@ export function ExpedientePage({ pacienteIdInicial }) {
           {ingresos.length > 0 ? (
             <div className="flex flex-col gap-2">
               {ingresos.map((ing, i) => {
-                const diagIngreso = diagnostico?.ingresos?.find((x) => x.id === ing.id);
+                const meta = Array.isArray(metaDiagnosticos) ? metaDiagnosticos : [];
+                const tieneDiagnostico = meta.some((m) => m.ingresoId === ing.id);
                 return (
-                  <div key={ing.id} className="rounded-xl p-3 text-sm" style={{ border: `1px solid ${COLORS.border}` }}>
+                  <div
+                    key={ing.id}
+                    className="rounded-xl p-3 text-sm flex items-center justify-between gap-3 flex-wrap"
+                    style={{ border: `1px solid ${COLORS.border}` }}
+                  >
                     <div className="font-medium flex items-center gap-2">
                       {new Date(ing.fechaIngreso).toLocaleString()}
                       {i === 0 && <span className="text-xs" style={{ color: COLORS.green }}>· Ingreso más reciente</span>}
                     </div>
-                    {ing.serviciosSolicitados && <div className="text-xs mt-1" style={{ color: "#666" }}>Servicios solicitados: {ing.serviciosSolicitados}</div>}
-                    {ing.referidoPor && <div className="text-xs" style={{ color: "#666" }}>Referido por: {ing.referidoPor}</div>}
-                    {ing.impresionClinicaIngreso && <div className="text-xs mt-1 whitespace-pre-wrap" style={{ color: "#666" }}>Impresión clínica de ingreso: {ing.impresionClinicaIngreso}</div>}
-                    {diagIngreso && (
-                      <div className="text-xs mt-1" style={{ color: "#666" }}>
-                        Diagnósticos registrados en este ingreso: {diagIngreso.diagnosticos.length}
-                      </div>
-                    )}
-                    {(() => {
-                      const docsIngreso = listaDocumentos.filter((d) => d.ingresoId === ing.id);
-                      if (!docsIngreso.length) return null;
-                      return (
-                        <div className="text-xs mt-1" style={{ color: "#666" }}>
-                          Expediente escaneado:{" "}
-                          {docsIngreso.map((d, k) => (
-                            <button
-                              key={d.id}
-                              type="button"
-                              className="font-semibold underline"
-                              style={{ color: COLORS.navy }}
-                              onClick={async () => {
-                                const blob = await api.getBlob(`/pacientes/${selectedId}/documentos/${d.id}`);
-                                const url = URL.createObjectURL(blob);
-                                window.open(url, "_blank");
-                                setTimeout(() => URL.revokeObjectURL(url), 60000);
-                              }}
-                            >
-                              {d.nombreOriginal}{k < docsIngreso.length - 1 ? ", " : ""}
-                            </button>
-                          ))}
-                        </div>
-                      );
-                    })()}
-                    {(esAdmin || tempToken) && (
+                    <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        className="text-xs font-semibold mt-2"
-                        style={{ color: COLORS.navy }}
-                        onClick={() => { setIngresoId(String(ing.id)); setMostrarFormulario(true); }}
+                        className="text-xs font-semibold px-3 py-1.5 rounded-lg"
+                        style={{ color: COLORS.navy, border: `1px solid ${COLORS.border}` }}
+                        onClick={() => verDiagnosticoDeIngreso(ing.id)}
                       >
-                        Registrar / ver diagnóstico de este ingreso →
+                        Ver diagnóstico
                       </button>
-                    )}
+                      <button
+                        type="button"
+                        className="text-xs font-semibold px-3 py-1.5 rounded-lg"
+                        style={{ backgroundColor: COLORS.navy, color: "white" }}
+                        onClick={() => registrarDiagnosticoDeIngreso(ing.id)}
+                      >
+                        {tieneDiagnostico ? "Editar diagnóstico" : "Registrar diagnóstico"}
+                      </button>
+                    </div>
                   </div>
                 );
               })}
@@ -644,80 +688,53 @@ export function ExpedientePage({ pacienteIdInicial }) {
         </Card>
       )}
 
-      <div className="mb-4">
-        <Button onClick={abrirModal} disabled={!selectedId}>
-          {estado === "cargando" ? "Consultando…" : "Ver diagnóstico"}
-        </Button>
-      </div>
-
-      {estado === "visible" && diagnostico && (
-        <Card style={{ border: `2px solid ${COLORS.gold}`, marginBottom: 16 }}>
-          <div className="font-semibold text-sm mb-1">🔓 Diagnóstico confidencial</div>
-          <DiagnosticoDetalle d={diagnostico} />
-
-          {diagnostico.historial?.length > 0 && (
-            <div className="mt-5 pt-4" style={{ borderTop: `1px solid ${COLORS.border}` }}>
-              <button
-                type="button"
-                onClick={() => setMostrarHistorial((v) => !v)}
-                className="flex items-center gap-1.5 text-xs font-semibold"
-                style={{ color: COLORS.navy }}
-              >
-                {mostrarHistorial ? <EyeOff size={13} /> : <History size={13} />}
-                {mostrarHistorial ? "Ocultar historial" : `Ver historial (${diagnostico.historial.length} versión${diagnostico.historial.length > 1 ? "es" : ""} anterior${diagnostico.historial.length > 1 ? "es" : ""})`}
-              </button>
-
-              {mostrarHistorial && (
-                <div className="flex flex-col gap-3 mt-4 animate-fade-in">
-                  {diagnostico.historial.map((h) => (
-                    <div key={h.id} className="rounded-xl p-3" style={{ border: `1px solid ${COLORS.border}` }}>
-                      <DiagnosticoDetalle d={h} />
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </Card>
+      {mensajeGuardado && !mostrarFormulario && (
+        <div className="mb-4"><Banner tone={mensajeGuardado.tone}>{mensajeGuardado.texto}</Banner></div>
       )}
 
-      {estado === "sin-registro" && <Banner tone="info">Este paciente todavía no tiene un diagnóstico registrado.</Banner>}
-
-      <Modal open={modalAbierto} onClose={() => setModalAbierto(false)} title="Información médica confidencial" icon={ShieldAlert}>
+      <Modal
+        open={modalAbierto}
+        onClose={() => setModalAbierto(false)}
+        title={modoModal === "registrar" ? "Código para registrar el diagnóstico" : "Información médica confidencial"}
+        icon={ShieldAlert}
+      >
         <p className="text-sm mb-4" style={{ color: COLORS.textMuted }}>
-          Está por ver el diagnóstico confidencial de <strong style={{ color: COLORS.text }}>{patient?.nombreCompleto}</strong>.
-          Esta acción queda registrada a su nombre (RNF-08) — el Administrador puede consultar quién vio qué y cuándo desde <strong style={{ color: COLORS.text }}>Reportes</strong>.
+          {modoModal === "registrar" ? (
+            <>Para registrar o editar el diagnóstico de este ingreso, escriba el código que le dio el Administrador.</>
+          ) : (
+            <>Está por ver el diagnóstico confidencial de <strong style={{ color: COLORS.text }}>{patient?.nombreCompleto}</strong>.
+            Esta acción queda registrada a su nombre — el Administrador puede consultar quién vio qué y cuándo desde <strong style={{ color: COLORS.text }}>Reportes</strong>.</>
+          )}
         </p>
 
         {mensajeError && <Banner tone="error">{mensajeError}</Banner>}
 
-        {esAdmin ? (
-          <Button onClick={confirmarYVer} disabled={estado === "cargando"}>
-            {estado === "cargando" ? "Verificando…" : "Continuar y ver diagnóstico"}
-          </Button>
-        ) : (
-          <div className="flex flex-col gap-3">
-            <FormField label="Código de acceso temporal">
-              <TextInput value={tempToken} onChange={(e) => setTempToken(e.target.value)} placeholder="Escriba el código que le dio el Administrador" />
-            </FormField>
-            {tokenInfo && <p className="text-xs -mt-1" style={{ color: COLORS.green }}>{tokenInfo}</p>}
-            <p className="text-xs" style={{ color: "#888" }}>
-              Este código lo genera el Administrador desde Seguridad y Roles. Solicítelo si necesita ver el diagnóstico.
-            </p>
-            <Button onClick={confirmarYVer} disabled={!tempToken || estado === "cargando"}>
-              {estado === "cargando" ? "Verificando…" : "Confirmar y ver diagnóstico"}
-            </Button>
-          </div>
-        )}
-      </Modal>
-
-      {selectedId && (esAdmin || tempToken) && (
-        <div className="mb-4">
-          <Button variant={mostrarFormulario ? "secondary" : "primary"} onClick={() => setMostrarFormulario((v) => !v)}>
-            {mostrarFormulario ? "Ocultar formulario de diagnóstico" : "Registrar diagnóstico"}
+        <div className="flex flex-col gap-3">
+          <FormField label="Código de acceso temporal">
+            <TextInput value={tempToken} onChange={(e) => setTempToken(e.target.value)} placeholder="Escriba el código que le dio el Administrador" />
+          </FormField>
+          <p className="text-xs" style={{ color: "#888" }}>
+            {modoModal === "registrar"
+              ? "El código se usa una sola vez, al guardar el diagnóstico."
+              : "Este código lo genera el Administrador desde Seguridad y Roles. Solicítelo si necesita ver el diagnóstico."}
+          </p>
+          <Button onClick={confirmarModal} disabled={!tempToken || estado === "cargando"}>
+            {estado === "cargando" ? "Verificando…" : modoModal === "registrar" ? "Continuar al formulario" : "Confirmar y ver diagnóstico"}
           </Button>
         </div>
-      )}
+      </Modal>
+
+      <Modal
+        open={modalVerAbierto}
+        onClose={() => { setModalVerAbierto(false); setDiagnosticoVer(null); setEstado("idle"); }}
+        title="Diagnóstico del ingreso (solo lectura)"
+        icon={ShieldAlert}
+        maxWidth={720}
+      >
+        {estado === "cargando" && <p className="text-sm" style={{ color: "#888" }}>Cargando…</p>}
+        {estado === "sin-registro" && <Banner tone="info">Este ingreso todavía no tiene un diagnóstico registrado.</Banner>}
+        {diagnosticoVer && <DiagnosticoDetalle d={diagnosticoVer} />}
+      </Modal>
 
       {selectedId && (esAdmin || tempToken) && mostrarFormulario && (
         <Card>
