@@ -148,9 +148,29 @@ export function CameraScannerModal({
         audio: false,
       });
       streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
+      // El video solo se puede pintar cuando el elemento ya conoce el stream.
+      // Antes se asignaba srcObject y se llamaba play() en el mismo tick: si
+      // play() resolvia antes de que el elemento tuviera datos, el <video>
+      // quedaba en negro aunque el permiso estuviera concedido. Se espera a
+      // "loadedmetadata" (con respaldo por si el evento ya ocurrio) y recien
+      // ahi se reproduce.
+      const video = videoRef.current;
+      if (video) {
+        video.srcObject = stream;
+        if (video.readyState < 1) {
+          await new Promise((resolver) => {
+            const listo = () => { video.removeEventListener("loadedmetadata", listo); resolver(); };
+            video.addEventListener("loadedmetadata", listo);
+            setTimeout(listo, 1500);
+          });
+        }
+        try {
+          await video.play();
+        } catch {
+          // Algunos navegadores rechazan play() si el elemento aun no tiene
+          // datos suficientes; con autoPlay + muted el stream se reproduce
+          // igual al llegar el primer frame.
+        }
       }
       setCamaraActiva(true);
       setEstado("capturando");
@@ -311,7 +331,7 @@ export function CameraScannerModal({
       {/* Vista previa de video con guias del documento */}
       {estado === "capturando" && (
         <div className="relative rounded-xl overflow-hidden mb-3" style={{ backgroundColor: "#111" }}>
-          <video ref={videoRef} playsInline muted className="w-full" style={{ maxHeight: 380 }} />
+          <video ref={videoRef} autoPlay playsInline muted className="w-full" style={{ maxHeight: 380 }} />
           <div className="absolute inset-0 pointer-events-none">
             <div className="absolute inset-6 rounded-lg" style={{ border: "2px dashed rgba(255,255,255,0.65)" }} />
             <div className="absolute left-2 top-2 w-6 h-6" style={{ borderTop: "3px solid #fff", borderLeft: "3px solid #fff", borderRadius: 4 }} />
