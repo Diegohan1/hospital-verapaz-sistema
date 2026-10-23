@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Printer, Camera, FileText, Download, Trash2, Eye, ChevronDown, ChevronUp } from "lucide-react";
+import { Printer, Camera, FileText, Download, Trash2, Eye, ChevronDown, ChevronUp, RefreshCw } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
 import { Card } from "../components/Card";
 import { Table } from "../components/Table";
@@ -1068,7 +1068,7 @@ function ListaAdjuntos({ archivos, onChange, titulo = "Adjuntar archivos (result
       </Modal>
       {tab === "lista" ? (
         <>
-          <div className="mb-4 flex gap-2">
+          <div className="mb-4 flex gap-2 items-center">
             <SearchInput
               placeholder="Buscar por nombre, DPI o historia clínica (RF-02)"
               value={buscarInput}
@@ -1076,8 +1076,25 @@ function ListaAdjuntos({ archivos, onChange, titulo = "Adjuntar archivos (result
               onClear={setBuscarInput}
               containerStyle={{ maxWidth: 360, flex: 1 }}
             />
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => pacientesLista.reload()}
+              disabled={pacientesLista.loading}
+              title="Recargar la lista de pacientes"
+            >
+              <span className="flex items-center gap-1.5">
+                <RefreshCw size={14} className={pacientesLista.loading ? "animate-spin" : ""} />
+                {pacientesLista.loading ? "Actualizando…" : "Actualizar"}
+              </span>
+            </Button>
           </div>
           {pacientesLista.error && <Banner tone="error">{pacientesLista.error}</Banner>}
+          {pacientesLista.loading && (
+            <div className="flex items-center gap-2 mb-2 text-xs" style={{ color: "#888" }}>
+              <RefreshCw size={13} className="animate-spin" /> Actualizando pacientes…
+            </div>
+          )}
           <Table
             headers={["Historia clínica", "Nombre", "DPI", "Edad", "Sexo", "Sangre", "Fechas de registro", ""]}
             rows={pacientesLista.loading ? [] : pacientesLista.items}
