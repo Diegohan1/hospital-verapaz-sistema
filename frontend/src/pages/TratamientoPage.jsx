@@ -146,7 +146,7 @@ export function TratamientoPage({ pacienteIdInicial }) {
             <div className="col-span-1 sm:col-span-2 lg:col-span-4">
               <label className="flex items-center gap-1.5 text-sm cursor-pointer select-none">
                 <input type="checkbox" checked={esQuirurgico} onChange={(e) => setEsQuirurgico(e.target.checked)} />
-                Es un procedimiento quirúrgico (RF-13) — registrar personal médico involucrado
+                Es un procedimiento quirúrgico — registrar personal médico involucrado
               </label>
             </div>
             {esQuirurgico && (

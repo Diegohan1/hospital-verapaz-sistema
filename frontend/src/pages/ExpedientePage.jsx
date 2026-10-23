@@ -324,8 +324,13 @@ export function ExpedientePage({ pacienteIdInicial }) {
   async function abrirExpedienteEscaneado(ingId) {
     const ventana = (() => { try { return window.open("", "_blank"); } catch { return null; } })();
     try {
-      const delIngreso = listaDocumentos.filter((d) => !ingId || d.ingresoId === Number(ingId));
-      const candidatos = delIngreso.length ? delIngreso : listaDocumentos;
+      const candidatos = ingId
+        ? listaDocumentos.filter((d) => d.ingresoId === Number(ingId))
+        : listaDocumentos;
+      if (!candidatos.length) {
+        if (ventana) ventana.close();
+        return false;
+      }
       const expediente =
         candidatos.find((d) => d.tipoDocumental === "expediente_admision") ||
         candidatos.find((d) => d.mimeType === "application/pdf") ||
@@ -738,7 +743,7 @@ export function ExpedientePage({ pacienteIdInicial }) {
 
       {selectedId && (esAdmin || tempToken) && mostrarFormulario && (
         <Card>
-          <div className="font-semibold text-sm mb-1">Registrar diagnóstico (RF-10)</div>
+          <div className="font-semibold text-sm mb-1">Registrar diagnóstico</div>
           <p className="text-xs mb-4" style={{ color: "#888" }}>
             Médico responsable: <strong>{usuario.nombre}</strong> — se toma de la sesión activa, no es editable.
           </p>

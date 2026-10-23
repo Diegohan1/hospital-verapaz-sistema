@@ -33,7 +33,7 @@ export function SeguridadPage() {
         <Card>
           <div className="font-semibold text-sm mb-2">🔑 Tokens de acceso temporal</div>
           <p className="text-sm" style={{ color: "#666" }}>
-            El Administrador asigna roles, funciones y permisos de token (RF-29, RF-30, RF-32, RF-33, RF-34).
+            El Administrador asigna roles, funciones y permisos de token.
             Duración del token: 5–15 minutos · Un solo uso. Solicítelo en el módulo de Expediente Clínico si necesita ver un diagnóstico.
           </p>
         </Card>
@@ -118,12 +118,12 @@ function SeguridadAdmin() {
 
   return (
     <div>
-      <PageHeader title="Seguridad y Roles de Usuario" subtitle="El Administrador asigna roles, funciones y permisos de token (RF-29, RF-30, RF-32, RF-33, RF-34)" />
+      <PageHeader title="Seguridad y Roles de Usuario" subtitle="El Administrador asigna roles, funciones y permisos de token" />
       {mensaje && <Banner tone={mensaje.tone}>{mensaje.texto}</Banner>}
       {error && <Banner tone="error">{error}</Banner>}
 
       <Table
-        headers={["Usuario", "Correo", "Roles (un usuario puede tener varios)", "Colegiado / Especialidad", "Autogenera token", "Estado"]}
+        headers={["Usuario", "Correo", "Roles (un usuario puede tener varios)", "Colegiado / Especialidad", "Estado"]}
         rows={loading ? [] : usuarios || []}
         emptyMessage={loading ? "Cargando…" : "Sin usuarios registrados."}
         renderRow={(u) => {
@@ -164,12 +164,6 @@ function SeguridadAdmin() {
                 )}
               </td>
               <td className="px-4 py-3 align-top">
-                <label className="flex items-center gap-2 text-xs" style={{ color: "#666" }}>
-                  <input type="checkbox" checked={u.puedeAutogenerarToken} onChange={(e) => actualizarUsuario(u.id, { puedeAutogenerarToken: e.target.checked })} />
-                  RF-34
-                </label>
-              </td>
-              <td className="px-4 py-3 align-top">
                 <span className="flex items-center gap-1.5 text-xs font-semibold" style={{ color: estado.enLinea ? COLORS.green : "#888" }}>
                   <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: estado.enLinea ? COLORS.green : "#C4C9D4" }} />
                   {estado.texto}
@@ -200,10 +194,6 @@ function SeguridadAdmin() {
                 </FormField>
               </>
             )}
-            <label className="flex items-center gap-2 text-sm" style={{ color: "#444" }}>
-              <input type="checkbox" checked={nuevo.puedeAutogenerarToken} onChange={(e) => setNuevo((f) => ({ ...f, puedeAutogenerarToken: e.target.checked }))} />
-              Puede autogenerar sus propios tokens (RF-34)
-            </label>
             <div>
               <Button type="submit" disabled={guardando}>{guardando ? "Creando…" : "Crear usuario"}</Button>
             </div>
@@ -211,7 +201,7 @@ function SeguridadAdmin() {
         </Card>
 
         <Card>
-          <div className="font-semibold text-sm mb-1">🔑 Emitir token de acceso temporal (RF-33)</div>
+          <div className="font-semibold text-sm mb-1">🔑 Emitir token de acceso temporal</div>
           <p className="text-xs mb-3" style={{ color: "#888" }}>Genera un token de un solo uso para que un usuario consulte el diagnóstico confidencial. Cópielo y compártalo por un canal seguro: solo se muestra una vez.</p>
           <form onSubmit={emitirToken} className="flex flex-col gap-4">
             <FormField label="Usuario">

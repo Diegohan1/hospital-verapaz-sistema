@@ -807,7 +807,7 @@ function ListaAdjuntos({ archivos, onChange, titulo = "Adjuntar archivos (result
       {tab === "nuevo" && puedeRegistrar ? (
         <Card>
           <p className="text-xs font-semibold mb-4" style={{ color: "#888" }}>
-            Historia clínica: si la hoja en papel ya trae una, escríbala tal cual; si se deja vacía, se genera automáticamente al guardar (RF-03). El DPI no puede repetirse (RF-04).
+            Historia clínica: si la hoja en papel ya trae una, escríbala tal cual; si se deja vacía, se genera automáticamente al guardar. El DPI no puede repetirse.
           </p>
           {mensaje && <Banner tone={mensaje.tone}>{mensaje.texto}</Banner>}
           <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -957,7 +957,7 @@ function ListaAdjuntos({ archivos, onChange, titulo = "Adjuntar archivos (result
       >
         <div>
           <p className="text-xs font-semibold mb-4" style={{ color: "#888" }}>
-            Ficha del paciente (RF-05 a RF-09) — se guarda sobre un paciente ya registrado.
+            Ficha del paciente — se guarda sobre un paciente ya registrado.
           </p>
           <div className="flex items-start justify-between gap-3 flex-wrap">
             <FormField label="Paciente">
@@ -965,7 +965,7 @@ function ListaAdjuntos({ archivos, onChange, titulo = "Adjuntar archivos (result
             </FormField>
             {ingresoPacienteId && pacienteDetalle && (
               <Button variant="secondary" onClick={() => setMostrarFicha(true)}>
-                <span className="flex items-center gap-1.5"><Printer size={14} /> Imprimir ficha (RF-09)</span>
+                <span className="flex items-center gap-1.5"><Printer size={14} /> Imprimir ficha</span>
               </Button>
             )}
           </div>
@@ -1070,7 +1070,7 @@ function ListaAdjuntos({ archivos, onChange, titulo = "Adjuntar archivos (result
         <>
           <div className="mb-4 flex gap-2 items-center">
             <SearchInput
-              placeholder="Buscar por nombre, DPI o historia clínica (RF-02)"
+              placeholder="Buscar por nombre, DPI o historia clínica"
               value={buscarInput}
               onChange={(e) => setBuscarInput(e.target.value)}
               onClear={setBuscarInput}

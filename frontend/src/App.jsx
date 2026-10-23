@@ -38,7 +38,23 @@ function Redirigir({ a }) {
 // los oculta; esto cierra la puerta tambien en la ruta.
 function ModuloProtegido({ modulo, children }) {
   const { usuario } = useAuth();
-  if (!puedeVerModulo(usuario, modulo)) return <Navigate to="/registro" replace />;
+  if (!puedeVerModulo(usuario, modulo)) {
+    // Si ni siquiera puede ver Registro (usuario sin roles), no redirigimos
+    // a /registro para no entrar en un bucle: mostramos el aviso.
+    if (modulo === "registro") {
+      return (
+        <div className="p-6">
+          <div className="rounded-xl p-5 bg-white" style={{ border: "1px solid #E3E6EC" }}>
+            <div className="font-semibold text-sm mb-1">Sin módulos asignados</div>
+            <p className="text-sm" style={{ color: "#666" }}>
+              Su usuario no tiene permisos para usar el sistema. Solicite al Administrador que le asigne un rol.
+            </p>
+          </div>
+        </div>
+      );
+    }
+    return <Navigate to="/registro" replace />;
+  }
   return children;
 }
 

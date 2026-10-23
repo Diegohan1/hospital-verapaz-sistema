@@ -37,7 +37,7 @@ export function ReferidosPage() {
 
   return (
     <div>
-      <PageHeader title="Clientes Referidos" subtitle="Médicos externos que refieren pacientes, con su comisión asociada (RF-16)" />
+      <PageHeader title="Clientes Referidos" subtitle="Médicos externos que refieren pacientes, con su comisión asociada" />
       {error && <Banner tone="error">{error}</Banner>}
       <Table
         headers={["Médico referente", "Especialidad", "Pacientes referidos", "Comisión"]}

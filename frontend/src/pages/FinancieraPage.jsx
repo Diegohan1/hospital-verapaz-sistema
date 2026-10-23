@@ -72,7 +72,7 @@ export function FinancieraPage() {
 
   return (
     <div>
-      <PageHeader title="Área Financiera" subtitle="Reporte consolidado: ingresos (hospital y farmacia), gastos, impuestos e ingreso neto (RF-21). El detalle de gastos se captura en Gastos del Hospital." />
+      <PageHeader title="Área Financiera" subtitle="Reporte consolidado: ingresos (hospital y farmacia), gastos, impuestos e ingreso neto. El detalle de gastos se captura en Gastos del Hospital." />
       <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-4">
         {stats.map((s) => (
           <Card key={s.label}>
@@ -109,7 +109,7 @@ export function FinancieraPage() {
         <Card style={{ marginTop: 16 }}>
           <div className="font-semibold text-sm mb-1">5.1 Facturación Hospital</div>
           <p className="text-xs mb-4" style={{ color: "#888" }}>
-            El costo de tratamiento intrahospitalario pendiente se suma automáticamente al costo base (RF-17, RF-19).
+            El costo de tratamiento intrahospitalario pendiente se suma automáticamente al costo base.
           </p>
           {mensaje && <Banner tone={mensaje.tone}>{mensaje.texto}</Banner>}
           <div className="mb-4">

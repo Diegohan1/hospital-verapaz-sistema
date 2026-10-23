@@ -56,7 +56,7 @@ export function ReportesPage() {
       <div>
         <PageHeader title="Reportes" />
         <Card>
-          <p className="text-sm" style={{ color: "#666" }}>Los reportes administrativos y financieros están disponibles solo para el Administrador (RF-31).</p>
+          <p className="text-sm" style={{ color: "#666" }}>Los reportes administrativos y financieros están disponibles solo para el Administrador.</p>
         </Card>
       </div>
     );
@@ -115,7 +115,7 @@ export function ReportesPage() {
 
   return (
     <div>
-      <PageHeader title="Reportes" subtitle="Reportes administrativos y financieros para apoyar la toma de decisiones (RF-31)" />
+      <PageHeader title="Reportes" subtitle="Reportes administrativos y financieros para apoyar la toma de decisiones" />
 
       <div className="flex items-end gap-3 flex-wrap mb-4">
         <FormField label="Desde"><TextInput type="date" value={desde} onChange={(e) => setDesde(e.target.value)} /></FormField>
@@ -180,7 +180,7 @@ export function ReportesPage() {
         <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
           <div>
             <div className="font-semibold text-sm mb-1">Ingresos por {TITULO_PERIODO[granularidad]}</div>
-            <p className="text-xs" style={{ color: "#888" }}>Hospital vs. farmacia, agrupado por {TITULO_PERIODO[granularidad]} (RF-21). Solo aparecen los períodos con movimiento.</p>
+            <p className="text-xs" style={{ color: "#888" }}>Hospital vs. farmacia, agrupado por {TITULO_PERIODO[granularidad]}. Solo aparecen los períodos con movimiento.</p>
           </div>
           <div className="flex gap-1" role="group" aria-label="Agrupar ingresos por">
             {GRANULARIDADES.map((g) => (
@@ -254,7 +254,7 @@ export function ReportesPage() {
       </div>
 
       <Card style={{ marginBottom: 16 }}>
-        <div className="font-semibold text-sm mb-3">Kardex de inventario de farmacia (RNF-10)</div>
+        <div className="font-semibold text-sm mb-3">Kardex de inventario de farmacia</div>
         <Table
           headers={["Medicamento", "Tipo", "Cantidad", "Motivo", "Fecha"]}
           rows={kardexPag.loading ? [] : kardexPag.items}
@@ -275,7 +275,7 @@ export function ReportesPage() {
       <Card>
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div>
-            <div className="font-semibold text-sm mb-1">Auditoría de accesos al diagnóstico confidencial (RNF-08)</div>
+            <div className="font-semibold text-sm mb-1">Auditoría de accesos al diagnóstico confidencial</div>
             <p className="text-xs" style={{ color: "#888" }}>
               Quién vio el diagnóstico de cada paciente, cuándo, y si fue como Administrador (acceso directo) o con un token temporal.
             </p>

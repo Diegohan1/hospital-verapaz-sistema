@@ -179,7 +179,7 @@ export function FarmaciaPage() {
       {alertas.length > 0 && (
         <Banner tone="error">
           ⚠ {alertas.filter((a) => a.estado.includes("stock_bajo")).length} medicamento(s) con stock bajo el mínimo ·{" "}
-          {alertas.filter((a) => a.estado.includes("por_vencer")).length} próximo(s) a vencer (RF-25, RF-26)
+          {alertas.filter((a) => a.estado.includes("por_vencer")).length} próximo(s) a vencer
         </Banner>
       )}
       {error && <Banner tone="error">{error}</Banner>}
@@ -225,7 +225,7 @@ export function FarmaciaPage() {
           <Card style={{ marginTop: 16 }}>
             <div className="flex items-center gap-2 mb-1">
               <ShoppingCart size={16} style={{ color: COLORS.navy }} />
-              <div className="font-semibold text-sm">Venta directa (RF-20/RF-24/RF-27)</div>
+              <div className="font-semibold text-sm">Venta directa</div>
             </div>
             <p className="text-xs mb-4" style={{ color: "#888" }}>
               Agregue uno o varios medicamentos al carrito. Puede asociarla a un paciente (para su registro) o dejarla sin paciente. Al cobrar se genera una sola factura con el detalle de cada medicamento.
@@ -292,7 +292,7 @@ export function FarmaciaPage() {
           </Card>
 
           <Card style={{ marginTop: 16 }}>
-            <div className="font-semibold text-sm mb-3">Salida por uso intrahospitalario (RF-15)</div>
+            <div className="font-semibold text-sm mb-3">Salida por uso intrahospitalario</div>
             {mensaje && <Banner tone={mensaje.tone}>{mensaje.texto}</Banner>}
             <form onSubmit={registrarMovimiento} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
               <FormField label="Medicamento">
@@ -334,7 +334,7 @@ export function FarmaciaPage() {
           </Card>
 
           <Card style={{ marginTop: 16 }}>
-            <div className="font-semibold text-sm mb-3">+ Nuevo medicamento (RF-22)</div>
+            <div className="font-semibold text-sm mb-3">+ Nuevo medicamento</div>
             <form onSubmit={crearMedicamento} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
               <FormField label="Nombre"><TextInput required value={nuevoMed.nombre} onChange={(e) => setNuevoMed((f) => ({ ...f, nombre: e.target.value }))} /></FormField>
               <FormField label="Tipo"><TextInput value={nuevoMed.tipo} onChange={(e) => setNuevoMed((f) => ({ ...f, tipo: e.target.value }))} /></FormField>
