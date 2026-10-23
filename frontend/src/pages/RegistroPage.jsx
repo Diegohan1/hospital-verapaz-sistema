@@ -725,21 +725,9 @@ function ListaAdjuntos({ archivos, onChange, titulo = "Adjuntar archivos (result
         </button>
       </div>
 
-      {/* Dev-Mari: escaneo del expediente fisico ANTES de registrar al
-          paciente — ya no depende de tener uno seleccionado. Util cuando el
-          doctor ya lo lleno a mano en papel: se escanea, el sistema intenta
-          leer los datos basicos y autorellenar el formulario de abajo, y el
-          PDF se adjunta al guardar. El escaneo es opcional: tambien se puede
-          seguir llenando el formulario a mano sin escanear nada. */}
       {tab === "nuevo" && puedeRegistrar && puedeVerDocumentos && (
         <Card style={{ marginBottom: 16 }}>
           <div className="font-semibold text-sm mb-1">Escanear expediente físico (opcional)</div>
-          <p className="text-xs mb-4" style={{ color: "#888" }}>
-            Si el doctor ya llenó el expediente en papel, escanéelo aquí antes de registrar: el sistema genera el PDF
-            automáticamente y trata de leer nombre, DPI, historia clínica, dirección, teléfono y fechas para autorellenar el formulario de abajo
-            (siempre revisable). El PDF original queda guardado tal cual, sin alterar la letra ni la firma del doctor,
-            y se adjunta al paciente al hacer clic en "Guardar paciente".
-          </p>
 
           {lecturaAvanzada?.disponible && (
             <p className="text-xs mb-3 font-semibold" style={{ color: COLORS.gold }}>
