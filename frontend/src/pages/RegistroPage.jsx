@@ -209,6 +209,7 @@ export function RegistroPage({ onVerExpediente }) {
 
   const [ingresoPacienteId, setIngresoPacienteId] = useState(null);
   const [mostrarFicha, setMostrarFicha] = useState(false);
+  const [modalEdicionAbierto, setModalEdicionAbierto] = useState(false);
   const [escanerAbierto, setEscanerAbierto] = useState(false);
   const [mensajeDocumento, setMensajeDocumento] = useState(null);
   const [mensajeFichaDocumento, setMensajeFichaDocumento] = useState(null);
@@ -394,7 +395,7 @@ export function RegistroPage({ onVerExpediente }) {
           await api.post(`/pacientes/${ingresoPacienteId}/documentos`, fd);
         }
       }
-      setMensajeIngreso({ tone: "success", texto: "Datos de ingreso/egreso guardados correctamente." });
+      setMensajeIngreso({ tone: "success", texto: "Datos del paciente guardados correctamente." });
       setAdjuntosIngreso([]);
       reloadPacienteDetalle();
       reloadDocumentos();
@@ -499,12 +500,12 @@ export function RegistroPage({ onVerExpediente }) {
     }
   }
 
-  // Abre la pestaña "Ingreso / Egreso" con el paciente ya cargado: ahi estan
-  // todos los campos editables de su ficha (identidad, ingreso, egreso y
-  // maternidad) sobre el mismo formulario que ya actualiza por PUT.
+  // Abre el modal de edicion con los datos del paciente cargados (identidad,
+  // ingreso, egreso y maternidad) sobre el mismo formulario que actualiza
+  // por PUT.
   function editarPaciente(p) {
     setIngresoPacienteId(p.id);
-    setTab("ingreso");
+    setModalEdicionAbierto(true);
   }
 
   async function eliminarPaciente(p) {
@@ -713,15 +714,6 @@ function ListaAdjuntos({ archivos, onChange, titulo = "Adjuntar archivos (result
             style={tab === "nuevo" ? { backgroundColor: COLORS.navy, color: "white" } : { border: `1px solid ${COLORS.border}`, backgroundColor: "white", color: COLORS.text }}
           >
             + Paciente nuevo
-          </button>
-        )}
-        {puedeRegistrar && (
-          <button
-            onClick={() => setTab("ingreso")}
-            className="px-4 py-2.5 rounded-xl text-sm font-semibold transition-all duration-150"
-            style={tab === "ingreso" ? { backgroundColor: COLORS.navy, color: "white" } : { border: `1px solid ${COLORS.border}`, backgroundColor: "white", color: COLORS.text }}
-          >
-            Ingreso / Egreso
           </button>
         )}
         <button
@@ -952,10 +944,20 @@ function ListaAdjuntos({ archivos, onChange, titulo = "Adjuntar archivos (result
           </form>
         </Card>
       ) : null}
-      {tab === "ingreso" && puedeRegistrar ? (
-        <Card>
+      {/* Edicion de un paciente ya registrado. Antes vivia en la pestaña
+          "Ingreso / Egreso"; ahora se abre como modal desde "Editar" en la
+          lista de pacientes registrados. Se conservan todos los campos
+          administrativos del paciente (identidad, ingreso, egreso y
+          maternidad): son datos del paciente, no del modulo. */}
+      <Modal
+        open={modalEdicionAbierto && !!ingresoPacienteId && !!pacienteDetalle}
+        onClose={() => setModalEdicionAbierto(false)}
+        title="Editar datos del paciente"
+        maxWidth={900}
+      >
+        <div>
           <p className="text-xs font-semibold mb-4" style={{ color: "#888" }}>
-            Ficha de ingreso y egreso (RF-05 a RF-09) — se guarda sobre un paciente ya registrado.
+            Ficha del paciente (RF-05 a RF-09) — se guarda sobre un paciente ya registrado.
           </p>
           <div className="flex items-start justify-between gap-3 flex-wrap">
             <FormField label="Paciente">
@@ -1062,8 +1064,9 @@ function ListaAdjuntos({ archivos, onChange, titulo = "Adjuntar archivos (result
               </div>
             </form>
           )}
-        </Card>
-      ) : tab === "lista" ? (
+        </div>
+      </Modal>
+      {tab === "lista" ? (
         <>
           <div className="mb-4 flex gap-2">
             <TextInput
