@@ -6,7 +6,6 @@ import { Banner } from "./Banner";
 import { COLORS } from "../styles/tokens";
 import { procesarEscaneoAutomatico, idAleatorio } from "../utils/scanProcessing";
 import { generarPdfDePaginas, validarPdf, descargarPdf, nombreDescarga, tamanoLegibleMB, renderizarPrimeraPaginaPdf, esPdf } from "../utils/pdfDocumentos";
-import { extraerDatosBasicos } from "../utils/ocrDatosBasicos";
 
 // Escaner documental automatico (Cambios2): como un escaner de impresion —
 // se toma la foto o se sube el archivo y el sistema detecta los bordes,
@@ -219,23 +218,21 @@ export function CameraScannerModal({
 
   // Dev-Mari: un PDF ya viene de un escaner fisico (impresora) — no es una
   // foto que haya que enderezar. Se usa tal cual, sin pasar por deteccion de
-  // bordes ni correccion de perspectiva, y se va directo a leer los datos
-  // basicos y confirmar.
+  // bordes ni correccion de perspectiva, y se confirma el PDF.
   async function manejarArchivoPdf(file) {
     setError(null);
     setAviso(null);
-    setEstado("extrayendo_datos");
+    setEstado("procesando");
     try {
       const bytes = await file.arrayBuffer();
-      const { dataUrl, totalPaginas } = await renderizarPrimeraPaginaPdf(bytes);
-      const datosBasicos = await extraerDatosBasicos([dataUrl]);
+      const { totalPaginas } = await renderizarPrimeraPaginaPdf(bytes);
       const blob = new Blob([bytes], { type: "application/pdf" });
       const nombre = nombreDescarga(pacienteId);
       setPdfResultado({ blob, paginas: totalPaginas, nombre });
       setEstado("confirmado");
       if (onConfirmar) {
         try {
-          await onConfirmar(blob, { paginas: totalPaginas, nombre, datosBasicos });
+          await onConfirmar(blob, { paginas: totalPaginas, nombre });
         } catch (err) {
           setError("El documento se generó, pero no se pudo guardar: " + err.message + " Use 'Descargar copia' para no perderlo.");
         }
@@ -288,18 +285,13 @@ export function CameraScannerModal({
       }
       const nombre = nombreDescarga(pacienteId);
 
-      // Lectura automatica de nombre/DPI/telefono/fecha (solo la primera
-      // pagina). Nunca bloquea el guardado: si falla o no reconoce nada,
-      // el formulario se sigue llenando a mano.
-      setEstado("extrayendo_datos");
-      const datosBasicos = await extraerDatosBasicos(paginas.map((p) => p.dataUrl));
-
+      // Solo convierte las fotos a PDF; no se extraen datos del documento.
       setPdfResultado({ blob, paginas: total, nombre });
       setEstado("confirmado");
       detenerCamara();
       if (onConfirmar) {
         try {
-          await onConfirmar(blob, { paginas: total, nombre, datosBasicos });
+          await onConfirmar(blob, { paginas: total, nombre });
         } catch (err) {
           setError("El documento se generó, pero no se pudo guardar en el expediente: " + err.message + " Use 'Descargar copia' para no perderlo.");
         }
@@ -348,13 +340,6 @@ export function CameraScannerModal({
         <div className="py-10 text-center">
           <RefreshCw size={28} className="animate-spin mx-auto" style={{ color: COLORS.navy }} />
           <p className="text-sm mt-3" style={{ color: "#666" }}>Escaneando: detectando bordes y corrigiendo perspectiva…</p>
-        </div>
-      )}
-
-      {estado === "extrayendo_datos" && (
-        <div className="py-10 text-center">
-          <RefreshCw size={28} className="animate-spin mx-auto" style={{ color: COLORS.navy }} />
-          <p className="text-sm mt-3" style={{ color: "#666" }}>Generando el PDF y leyendo los datos básicos del documento…</p>
         </div>
       )}
 

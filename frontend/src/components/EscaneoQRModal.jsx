@@ -5,8 +5,6 @@ import { Button } from "./Button";
 import { Banner } from "./Banner";
 import { COLORS } from "../styles/tokens";
 import { api } from "../services/api";
-import { extraerDatosBasicos } from "../utils/ocrDatosBasicos";
-import { renderizarPrimeraPaginaPdf } from "../utils/pdfDocumentos";
 
 const POLL_MS = 2500;
 
@@ -77,11 +75,8 @@ export function EscaneoQRModal({ open, onClose, onConfirmar }) {
       setEstado("recibiendo");
 
       const blob = await api.getBlob(`/escaneo-movil/sesiones/${id}/pdf`);
-      const bytes = await blob.arrayBuffer();
-      const { dataUrl } = await renderizarPrimeraPaginaPdf(bytes);
-      const datosBasicos = await extraerDatosBasicos([dataUrl]);
 
-      if (onConfirmar) await onConfirmar(blob, { paginas: r.paginas, nombre: r.nombreOriginal, datosBasicos });
+      if (onConfirmar) await onConfirmar(blob, { paginas: r.paginas, nombre: r.nombreOriginal });
       onClose();
     } catch (err) {
       // Un fallo de red pasajero no debe cortar el sondeo; solo se avisa si
