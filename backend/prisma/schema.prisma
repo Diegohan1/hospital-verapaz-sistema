@@ -193,8 +193,9 @@ model Ingreso {
   referidoPor             String?
   creadoEn                DateTime @default(now())
 
-  paciente     Paciente      @relation(fields: [pacienteId], references: [id])
+  paciente     Paciente            @relation(fields: [pacienteId], references: [id])
   diagnosticos Diagnostico[]
+  documentos   DocumentoPaciente[]
 
   @@index([pacienteId])
   @@index([fechaIngreso])
@@ -234,6 +235,9 @@ model EgresoClinico {
 model DocumentoPaciente {
   id                     Int       @id @default(autoincrement())
   pacienteId             Int
+  // Admision (ingreso) a la que pertenece el escaneo. Opcional: los
+  // documentos subidos antes de esta migracion no tienen ingreso asignado.
+  ingresoId              Int?
   nombreOriginal         String
   nombreArchivo          String // nombre interno aleatorio generado por el servidor
   mimeType               String
@@ -250,9 +254,11 @@ model DocumentoPaciente {
   eliminadoEn            DateTime?
 
   paciente    Paciente @relation(fields: [pacienteId], references: [id])
+  ingreso     Ingreso? @relation(fields: [ingresoId], references: [id])
   registrador Usuario  @relation("DocumentoRegistradoPor", fields: [registradoPor], references: [id])
 
   @@index([pacienteId])
+  @@index([ingresoId])
   @@index([creadoEn])
   @@index([tipoDocumental])
 }

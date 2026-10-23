@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from "react";
-import { ShieldAlert, KeyRound, Plus, Trash2, History, EyeOff, FileText, X } from "lucide-react";
+import { ShieldAlert, KeyRound, Plus, Trash2, History, EyeOff, FileText, X, Camera } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
 import { Banner } from "../components/Banner";
 import { Modal } from "../components/Modal";
+import { CameraScannerModal } from "../components/CameraScannerModal";
 import { FormField, TextInput, Select, TextArea } from "../components/FormField";
 import { Cie10Input } from "../components/Cie10Input";
 import { PacienteBuscador } from "../components/PacienteBuscador";
@@ -242,6 +243,12 @@ export function ExpedientePage({ pacienteIdInicial }) {
   // Un solo paciente por id (no una lista completa): con volumen alto de
   // pacientes, cargar todos de una vez para un <select> deja de ser viable.
   const { data: patient, reload: recargarPaciente } = useFetch(selectedId ? `/pacientes/${selectedId}` : null, { enabled: !!selectedId });
+  // Escaneos del paciente, para mostrar en cada ingreso el suyo (por ingresoId).
+  const { data: documentosPaciente, reload: recargarDocumentos } = useFetch(
+    selectedId ? `/pacientes/${selectedId}/documentos` : null,
+    { enabled: !!selectedId }
+  );
+  const listaDocumentos = Array.isArray(documentosPaciente) ? documentosPaciente : documentosPaciente?.items || [];
 
   const [modalAbierto, setModalAbierto] = useState(false);
   const [tempToken, setTempToken] = useState("");
@@ -259,6 +266,11 @@ export function ExpedientePage({ pacienteIdInicial }) {
   const [ingresoId, setIngresoId] = useState("");
   const [mostrarNuevoIngreso, setMostrarNuevoIngreso] = useState(false);
   const [guardandoIngreso, setGuardandoIngreso] = useState(false);
+  // Escaneo del expediente fisico de ESTE ingreso (fotos -> PDF), igual que
+  // en Registro y Admision. Se sube al guardar el ingreso y queda ligado a
+  // su admision.
+  const [escanerIngresoAbierto, setEscanerIngresoAbierto] = useState(false);
+  const [documentoIngreso, setDocumentoIngreso] = useState(null);
   const [mensajeIngreso, setMensajeIngreso] = useState(null);
   const [ingresoForm, setIngresoForm] = useState({ fecha: ahoraFecha(), hora: ahoraHora(), impresionClinicaIngreso: "", serviciosSolicitados: "", referidoPor: "" });
 
@@ -460,16 +472,30 @@ export function ExpedientePage({ pacienteIdInicial }) {
     setMensajeIngreso(null);
     try {
       const fechaIngreso = new Date(`${ingresoForm.fecha}T${ingresoForm.hora || "00:00"}`).toISOString();
-      await api.post(`/pacientes/${selectedId}/ingresos`, {
+      const ingreso = await api.post(`/pacientes/${selectedId}/ingresos`, {
         fechaIngreso,
         impresionClinicaIngreso: ingresoForm.impresionClinicaIngreso,
         serviciosSolicitados: ingresoForm.serviciosSolicitados,
         referidoPor: ingresoForm.referidoPor,
       });
+      // El escaneo del expediente fisico de este ingreso se sube ya con el
+      // ingresoId, para que quede ligado a ESTA admision (no al paciente en
+      // general). Igual que en Registro y Admision: fotos -> PDF.
+      if (documentoIngreso?.blob) {
+        const fd = new FormData();
+        fd.append("documento", documentoIngreso.blob, documentoIngreso.nombre || "expediente.pdf");
+        fd.append("tipoDocumental", "expediente_admision");
+        fd.append("paginas", String(documentoIngreso.paginas || 1));
+        fd.append("ingresoId", String(ingreso.id));
+        if (documentoIngreso.fechaDocumentoOriginal) fd.append("fechaDocumentoOriginal", documentoIngreso.fechaDocumentoOriginal);
+        await api.post(`/pacientes/${selectedId}/documentos`, fd);
+      }
       setMensajeIngreso({ tone: "success", texto: "Ingreso registrado correctamente." });
       setIngresoForm({ fecha: ahoraFecha(), hora: ahoraHora(), impresionClinicaIngreso: "", serviciosSolicitados: "", referidoPor: "" });
+      setDocumentoIngreso(null);
       setMostrarNuevoIngreso(false);
       recargarPaciente();
+      recargarDocumentos();
     } catch (err) {
       setMensajeIngreso({ tone: "error", texto: err.message });
     } finally {
@@ -536,6 +562,41 @@ export function ExpedientePage({ pacienteIdInicial }) {
                         Diagnósticos registrados en este ingreso: {diagIngreso.diagnosticos.length}
                       </div>
                     )}
+                    {(() => {
+                      const docsIngreso = listaDocumentos.filter((d) => d.ingresoId === ing.id);
+                      if (!docsIngreso.length) return null;
+                      return (
+                        <div className="text-xs mt-1" style={{ color: "#666" }}>
+                          Expediente escaneado:{" "}
+                          {docsIngreso.map((d, k) => (
+                            <button
+                              key={d.id}
+                              type="button"
+                              className="font-semibold underline"
+                              style={{ color: COLORS.navy }}
+                              onClick={async () => {
+                                const blob = await api.getBlob(`/pacientes/${selectedId}/documentos/${d.id}`);
+                                const url = URL.createObjectURL(blob);
+                                window.open(url, "_blank");
+                                setTimeout(() => URL.revokeObjectURL(url), 60000);
+                              }}
+                            >
+                              {d.nombreOriginal}{k < docsIngreso.length - 1 ? ", " : ""}
+                            </button>
+                          ))}
+                        </div>
+                      );
+                    })()}
+                    {(esAdmin || tempToken) && (
+                      <button
+                        type="button"
+                        className="text-xs font-semibold mt-2"
+                        style={{ color: COLORS.navy }}
+                        onClick={() => { setIngresoId(String(ing.id)); setMostrarFormulario(true); }}
+                      >
+                        Registrar / ver diagnóstico de este ingreso →
+                      </button>
+                    )}
                   </div>
                 );
               })}
@@ -560,6 +621,31 @@ export function ExpedientePage({ pacienteIdInicial }) {
                 <FormField label="Servicios solicitados"><TextInput value={ingresoForm.serviciosSolicitados} onChange={(e) => setIngresoForm((f) => ({ ...f, serviciosSolicitados: e.target.value }))} /></FormField>
                 <FormField label="Referido por"><TextInput value={ingresoForm.referidoPor} onChange={(e) => setIngresoForm((f) => ({ ...f, referidoPor: e.target.value }))} /></FormField>
               </div>
+
+              <div>
+                <div className="font-semibold text-sm mb-2" style={{ color: COLORS.navy }}>Expediente escaneado de este ingreso (opcional)</div>
+                <p className="text-xs mb-3" style={{ color: "#888" }}>
+                  Igual que en Registro y Admisión: fotografíe el expediente en papel de esta admisión y el sistema genera el PDF.
+                  El escaneo queda ligado a <strong>este ingreso</strong>, no al paciente en general.
+                </p>
+                {!documentoIngreso ? (
+                  <Button type="button" variant="secondary" onClick={() => setEscanerIngresoAbierto(true)}>
+                    <span className="flex items-center gap-1.5"><Camera size={14} /> Escanear desde este dispositivo</span>
+                  </Button>
+                ) : (
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <span className="flex items-center gap-2 text-sm min-w-0">
+                      <FileText size={15} style={{ color: COLORS.navy }} className="shrink-0" />
+                      <span className="font-semibold">{documentoIngreso.nombre}</span>
+                      <span className="text-xs" style={{ color: "#999" }}>{documentoIngreso.paginas} pág. — se adjuntará al guardar el ingreso</span>
+                    </span>
+                    <button type="button" onClick={() => setDocumentoIngreso(null)} className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-lg" style={{ color: COLORS.red }}>
+                      <Trash2 size={13} /> Quitar escaneo
+                    </button>
+                  </div>
+                )}
+              </div>
+
               <div className="flex gap-2">
                 <Button type="submit" disabled={guardandoIngreso}>{guardandoIngreso ? "Guardando…" : "Guardar ingreso"}</Button>
                 <Button type="button" variant="secondary" onClick={() => { setMostrarNuevoIngreso(false); setMensajeIngreso(null); }}>Cancelar</Button>
@@ -898,6 +984,16 @@ export function ExpedientePage({ pacienteIdInicial }) {
           </form>
         </Card>
       )}
+
+      <CameraScannerModal
+        open={escanerIngresoAbierto}
+        onClose={() => setEscanerIngresoAbierto(false)}
+        onConfirmar={(blob, { paginas, nombre, datosBasicos }) => {
+          setDocumentoIngreso({ blob, paginas, nombre, fechaDocumentoOriginal: datosBasicos?.fechaDocumentoOriginal || "" });
+        }}
+        titulo="Escanear expediente de este ingreso"
+        mensajeExito="El documento quedó listo — se adjuntará a este ingreso al guardarlo."
+      />
     </div>
   );
 }
