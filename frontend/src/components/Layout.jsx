@@ -112,7 +112,11 @@ function SidebarContent({ usuario, onLogout, onNavigate, restrictedMode, puedeAl
 
 export function Layout({ usuario, onLogout, children }) {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [restrictedMode, setRestrictedMode] = useState(false);
+  const [restrictedMode, setRestrictedMode] = useState(() => {
+    const guardado = localStorage.getItem("hp_restricted_mode");
+    if (guardado === null) return true; // por defecto solo Registro y Expediente
+    return guardado === "true";
+  });
   // Solo el Administrador puede alternar manualmente el modo restringido:
   // los demas roles ya tienen su menu limitado por permisos.
   const puedeAlternarModo = modulosPermitidos(usuario) === null;
@@ -122,7 +126,13 @@ export function Layout({ usuario, onLogout, children }) {
 
   const toggleRestrictedMode = () => {
     setGiroLogo(n => n + 1);
-    if (puedeAlternarModo) setRestrictedMode(prev => !prev);
+    if (puedeAlternarModo) {
+      setRestrictedMode((prev) => {
+        const siguiente = !prev;
+        localStorage.setItem("hp_restricted_mode", String(siguiente));
+        return siguiente;
+      });
+    }
   };
 
   return (
