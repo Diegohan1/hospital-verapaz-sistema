@@ -313,6 +313,41 @@ export function ExpedientePage({ pacienteIdInicial }) {
   // RF-11: el Administrador confirma sin token; los demas roles necesitan
   // uno vigente (RF-33/RF-34). El modal es el unico punto de entrada para
   // ver el diagnostico, para dejar claro que es una accion sensible (RNF-08).
+  //
+  // Al ver el diagnostico se abre ademas el PDF escaneado del expediente
+  // fisico (el que se genero al fotografiar el expediente en Registro y
+  // Admision). Se abre en una pestaña nueva; si el paciente no tiene ningun
+  // escaneo, la vista del diagnostico funciona igual que antes.
+  async function abrirExpedienteEscaneado() {
+    // La pestaña se abre YA (dentro del gesto del usuario) y se le pone la
+    // URL despues: si se abriera tras los await, el bloqueador de popups la
+    // mataria por no considerarla parte del clic.
+    let ventana = null;
+    try { ventana = window.open("", "_blank"); } catch { ventana = null; }
+    try {
+      const documentos = await api.get(`/pacientes/${selectedId}/documentos`);
+      const lista = Array.isArray(documentos) ? documentos : documentos?.items || [];
+      // Preferimos el expediente de admision; si no, cualquier PDF o imagen.
+      const expediente =
+        lista.find((d) => d.tipoDocumental === "expediente_admision") ||
+        lista.find((d) => d.mimeType === "application/pdf") ||
+        lista[0];
+      if (!expediente) {
+        if (ventana) ventana.close();
+        return false;
+      }
+      const blob = await api.getBlob(`/pacientes/${selectedId}/documentos/${expediente.id}`);
+      const url = URL.createObjectURL(blob);
+      if (ventana) ventana.location.href = url;
+      else window.open(url, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      return true;
+    } catch {
+      if (ventana) ventana.close();
+      return false;
+    }
+  }
+
   async function confirmarYVer() {
     setEstado("cargando");
     setMensajeError(null);
@@ -321,6 +356,9 @@ export function ExpedientePage({ pacienteIdInicial }) {
       setDiagnostico(data);
       setEstado("visible");
       setModalAbierto(false);
+      // Se abre el PDF escaneado del expediente (Registro y Admision) junto
+      // al diagnostico, en la misma accion de "ver".
+      abrirExpedienteEscaneado();
       // el token es de un solo uso (RNF-12): ya se consumio al verificar,
       // asi que no lo dejamos activo para el formulario de "Registrar diagnostico"
       setTempToken("");
