@@ -37,6 +37,9 @@ El sistema cubre los procesos administrativos y clínicos del hospital:
 ## 2. Acceso al sistema
 
 ### 2.1 Iniciar sesión
+
+![Pantalla de inicio de sesión](./capturas_usuario/01-login-ok-menu.png)
+
 1. Abra la dirección del sistema en el navegador.
 2. Escriba su **correo** y **contraseña** en la pantalla de inicio de sesión.
 3. Presione **Ingresar**.
@@ -57,6 +60,9 @@ Si la contraseña es incorrecta, el sistema muestra "Credenciales inválidas". D
 Si no recibe el enlace, comuníquese con el Administrador del sistema.
 
 ### 2.4 Navegación y modo restringido
+
+![Menú lateral - Vista general](./capturas_usuario/02-registro-lista.png)
+
 - El menú lateral izquierdo muestra los módulos del sistema. Los módulos a los que su rol no tiene acceso de escritura siguen visibles, pero las acciones que no le corresponden devuelven el mensaje **"No tiene permiso para esta accion"**.
 - Al presionar el **logo del hospital** en la parte superior del menú se activa el **modo restringido**: solo quedan visibles **Registro y Admisión** y **Expediente Clínico**. Útil para trabajar sin distracciones. Presione el logo de nuevo para volver al menú completo.
 
